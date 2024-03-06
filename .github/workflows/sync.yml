@@ -1,0 +1,51 @@
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5 5 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clone official Odoo
+      uses: actions/checkout@v3
+      with:
+        repository: 'odoo/odoo'
+        ref: '17.0'
+        path: 'odoo'
+    - name: Clone odoo-lite Repo
+      uses: actions/checkout@v3
+      with:
+        repository: 'rawevan/odoo-lite'
+        token: ${{ secrets.GITHUB_TOKEN }}
+        ref: 'official-17'
+        path: 'odoo-lite'
+    - name: Backup
+      run: |
+        mkdir tmp
+        cp -R odoo-lite/.git tmp/
+        mkdir -p ./tmp/addons
+        cp -R odoo/addons/web tmp/addons/
+    - name: Clean and restore files
+      run: |
+        rm -rf odoo-lite/*
+        rm -rf odoo/.git/*
+        rm -rf odoo/addons/*
+        rm -rf odoo/doc/cla/*
+        find . -name "*.po" -type f -delete
+        cp -R odoo/* odoo-lite/
+        cp -R tmp/* odoo-lite/
+    - name: Commit and push
+      run: |
+        cd odoo-lite
+        git config user.name 'GitHub Actions'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+        git add .
+        git commit -m "Sync changes from official Odoo" && git push || echo "Clean repo"
+    - name: Create Pull Request
+      run: |
+        pwd
+        cd odoo-lite
+        gh pr create -B lite-17 -H official-17 --title 'Merge branch_to_merge into base_branch' --body 'Created by Github action'
+      env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
