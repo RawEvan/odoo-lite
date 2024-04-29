@@ -1954,6 +1954,8 @@ class BaseModel(metaclass=MetaModel):
         field = self._fields[fname]
         if func == 'recordset' and not (field.relational or fname == 'id'):
             raise ValueError(f"Aggregate method {func!r} can be only used on relational field (or id) (for {aggregate_spec!r}).")
+        if property_name and field.type != 'property':
+            warnings.warn(f"Ignore the {property_name!r} part of {aggregate_spec!r}, this notation is reserved for the Property field")
 
         sql_field = self._field_to_sql(self._table, access_fname, query)
         sql_expr = READ_GROUP_AGGREGATE[func](self._table, sql_field)
@@ -3891,11 +3893,16 @@ class BaseModel(metaclass=MetaModel):
             (column_fields if field.column_type else other_fields).add(field)
 
         # necessary to retrieve the en_US value of fields without a translation
-        translated_field_names = [field.name for field in column_fields if field.translate]
-        if translated_field_names:
-            self.flush_model(translated_field_names)
-
         context = self.env.context
+        field_names_to_flush = [
+            field.name for field in column_fields
+            if field.translate or (
+                field.type == 'binary'
+                and (context.get('bin_size') or context.get('bin_size_' + field.name))
+            )
+        ]
+        if field_names_to_flush:
+            self.flush_model(field_names_to_flush)
 
         if column_fields:
             # the query may involve several tables: we need fully-qualified names
@@ -4795,13 +4802,14 @@ class BaseModel(metaclass=MetaModel):
             ids.extend(id_ for id_, in cr.fetchall())
 
         # put the new records in cache, and update inverse fields, for many2one
+        # (using bin_size=False to put binary values in the right place)
         #
         # cachetoclear is an optimization to avoid modified()'s cost until other_fields are processed
         cachetoclear = []
         records = self.browse(ids)
         inverses_update = defaultdict(list)     # {(field, value): ids}
         common_set_vals = set(LOG_ACCESS_COLUMNS + ['id', 'parent_path'])
-        for data, record in zip(data_list, records):
+        for data, record in zip(data_list, records.with_context(bin_size=False)):
             data['record'] = record
             # DLE P104: test_inherit.py, test_50_search_one2many
             vals = dict({k: v for d in data['inherited'].values() for k, v in d.items()}, **data['stored'])
@@ -6268,11 +6276,16 @@ class BaseModel(metaclass=MetaModel):
             records.sorted(key=lambda r: r.name)
         """
         if key is None:
-            recs = self.search([('id', 'in', self.ids)])
-            return self.browse(reversed(recs._ids)) if reverse else recs
-        if isinstance(key, str):
-            key = itemgetter(key)
-        return self.browse(item.id for item in sorted(self, key=key, reverse=reverse))
+            if any(self._ids):
+                ids = self.search([('id', 'in', self.ids)])._ids
+            else:  # Don't support new ids because search() doesn't work on new records
+                ids = self._ids
+            ids = tuple(reversed(ids)) if reverse else ids
+        else:
+            if isinstance(key, str):
+                key = itemgetter(key)
+            ids = tuple(item.id for item in sorted(self, key=key, reverse=reverse))
+        return self.__class__(self.env, ids, self._prefetch_ids)
 
     def update(self, values):
         """ Update the records in ``self`` with ``values``. """

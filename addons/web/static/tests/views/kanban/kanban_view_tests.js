@@ -603,6 +603,45 @@ QUnit.module("Views", (hooks) => {
         }
     );
 
+    QUnit.test("empty group when grouped by date", async (assert) => {
+        serverData.models.partner.records[0].date = "2017-01-08";
+        serverData.models.partner.records[1].date = "2017-02-09";
+        serverData.models.partner.records[2].date = "2017-02-08";
+        serverData.models.partner.records[3].date = "2017-02-10";
+
+        const kanban = await makeView({
+            type: "kanban",
+            resModel: "partner",
+            serverData,
+            arch: `<kanban>
+                <field name="bar"/>
+                <field name="date" allow_group_range_value="true"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click">
+                            <field name="name"/>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>`,
+            groupBy: ["date:month"],
+        });
+
+        assert.deepEqual(getNodesTextContent(target.querySelectorAll(".o_kanban_header")), [
+            "January 2017",
+            "February 2017",
+        ]);
+
+        serverData.models.partner.records.shift(); // remove only record of the first group
+        await reload(kanban, { groupBy: ["date:month"] });
+        assert.deepEqual(getNodesTextContent(target.querySelectorAll(".o_kanban_header")), [
+            "January 2017",
+            "February 2017",
+        ]);
+        assert.containsNone(getColumn(target, 0), ".o_kanban_record");
+        assert.containsN(getColumn(target, 1), ".o_kanban_record", 3);
+    });
+
     QUnit.test(
         "Ensure float fields are formatted properly without using a widget",
         async (assert) => {
@@ -3532,6 +3571,7 @@ QUnit.module("Views", (hooks) => {
 
     QUnit.test("quick create record: cancel when modal is opened", async (assert) => {
         serverData.views["partner,some_view_ref,form"] = '<form><field name="product_id"/></form>';
+        serverData.views["product,false,form"] = '<form><field name="name"/></form>';
 
         // patch setTimeout s.t. the autocomplete dropdown opens directly
         patchWithCleanup(browser, {
@@ -3557,7 +3597,7 @@ QUnit.module("Views", (hooks) => {
 
         await editInput(target, ".o_kanban_quick_create input", "test");
         await triggerEvent(target, ".o_kanban_quick_create input", "input");
-        await triggerEvent(target, ".o_kanban_quick_create input", "blur");
+        await click(target, ".o_m2o_dropdown_option_create_edit");
 
         // When focusing out of the many2one, a modal to add a 'product' will appear.
         // The following assertions ensures that a click on the body element that has 'modal-open'
@@ -8898,6 +8938,45 @@ QUnit.module("Views", (hooks) => {
         }
     );
 
+    QUnit.test("kanban with colorpicker and node with color attribute", async (assert) => {
+        serverData.models.category.fields.colorpickerField = {
+            string: "Color index",
+            type: "integer",
+        };
+
+        serverData.models.category.records[0].colorpickerField = 3;
+
+        await makeView({
+            type: "kanban",
+            resModel: "category",
+            serverData,
+            arch: `
+                <kanban>
+                    <field name="colorpickerField"/>
+                    <templates>
+                        <t t-name="kanban-menu">
+                            <div class="oe_kanban_colorpicker" data-field="colorpickerField"/>
+                        </t>
+                        <t t-name="kanban-box">
+                            <div color="colorpickerField">
+                                <field name="name"/>
+                            </div>
+                        </t>
+                    </templates>
+                </kanban>`,
+            async mockRPC(route, { method, args }) {
+                if (method === "web_save") {
+                    assert.step(`write-color-${args[1].colorpickerField}`);
+                }
+            },
+        });
+        assert.hasClass(getCard(target, 0).querySelector("[color='colorpickerField']"), "oe_kanban_color_3");
+        await toggleRecordDropdown(target, 0);
+        await click(target, '.oe_kanban_colorpicker li[title="Raspberry"] a.oe_kanban_color_9');
+        assert.verifySteps(["write-color-9"], "should write on the color field");
+        assert.hasClass(getCard(target, 0).querySelector("[color='colorpickerField']"), "oe_kanban_color_9");
+    });
+
     QUnit.test("colorpicker doesnt appear when missing access rights", async (assert) => {
         await makeView({
             type: "kanban",
@@ -10916,12 +10995,12 @@ QUnit.module("Views", (hooks) => {
         });
         assert.containsOnce(
             target,
-            'img[data-src*="/web/image"][data-src$="&id=1&unique="]',
+            'img[data-src*="/web/image"][data-src$="&id=1"]',
             "image url should contain id of set partner_id"
         );
         assert.containsOnce(
             target,
-            'img[data-src*="/web/image"][data-src$="&id=&unique="]',
+            'img[data-src*="/web/image"][data-src$="&id="]',
             "image url should contain an empty id if partner_id is not set"
         );
     });
