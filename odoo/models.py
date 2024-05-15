@@ -5923,7 +5923,7 @@ class BaseModel(metaclass=MetaModel):
             return self
 
         company_id = int(company)
-        allowed_company_ids = self.env.context.get('allowed_company_ids', [])
+        allowed_company_ids = self.env.context.get('allowed_company_ids') or []
         if allowed_company_ids and company_id == allowed_company_ids[0]:
             return self
         # Copy the allowed_company_ids list
@@ -6835,7 +6835,8 @@ class BaseModel(metaclass=MetaModel):
                     records = model.search([(field.name, 'in', real_records.ids)], order='id')
                 if new_records:
                     cache_records = self.env.cache.get_records(model, field)
-                    records |= cache_records.filtered(lambda r: set(r[field.name]._ids) & set(self._ids))
+                    new_ids = set(self._ids)
+                    records |= cache_records.filtered(lambda r: not set(r[field.name]._ids).isdisjoint(new_ids))
 
             yield from records._modified_triggers(subtree)
 
