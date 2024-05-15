@@ -430,7 +430,7 @@ QUnit.module("Views", (hooks) => {
                 });
                 return {
                     bus: new EventBus(),
-                    size: 9,
+                    size: 6,
                     isSmall: false,
                 };
             },
@@ -1226,6 +1226,59 @@ QUnit.module("Views", (hooks) => {
         });
         await click(target, ".modal [name=company_ids] .o_field_x2many_list_row_add a");
         assert.verifySteps(["get_views (res.company)", "onchange (res.company)"]);
+    });
+
+    QUnit.test("x2many form_view_ref with defined list", async (assert) => {
+        serverData.models.partner.records = [{ id: 1, timmy: [1] }];
+        serverData.models.partner_type.records = [{ id: 1, display_name: "Timmy 1" }];
+        serverData.views = {
+            "partner_type,foo_partner_type_form_view,form": `
+                <form>
+                    <div class="form_view_ref_partner_type">
+                        <field name="display_name" />
+                    </div>
+                </form>`,
+        };
+        const userContext = {
+            lang: "en",
+            tz: "taht",
+            uid: 7,
+        };
+        const expectedContexts = new Map();
+
+        expectedContexts.set("partner", { ...userContext });
+        expectedContexts.set("partner_type", {
+            ...userContext,
+            form_view_ref: "foo_partner_type_form_view",
+        });
+        await makeView({
+            type: "form",
+            resModel: "partner",
+            serverData,
+            arch: `
+                <form>
+                    <field name="timmy" invisible="1" />
+                    <field string="Partner Types" name="timmy" context="{
+                        'default_partner_id': id,
+                        'form_view_ref': 'foo_partner_type_form_view'
+                    }">
+                        <tree>
+                            <field name="display_name" />
+                        </tree>
+                    </field>
+                </form>`,
+            resId: 1,
+            mockRPC: (route, { method, model, kwargs }) => {
+                if (method === "get_views") {
+                    const { context } = kwargs;
+                    assert.step(`${method} (${model})`);
+                    assert.deepEqual(context, expectedContexts.get(model));
+                }
+            },
+        });
+        assert.verifySteps(["get_views (partner)"]);
+        await click(target, ".o_field_widget[name='timmy'] .o_field_cell");
+        assert.verifySteps(["get_views (partner_type)"]);
     });
 
     QUnit.test("invisible fields are properly hidden", async function (assert) {
@@ -8391,7 +8444,7 @@ QUnit.module("Views", (hooks) => {
     });
 
     QUnit.test("correct amount of buttons", async function (assert) {
-        let screenSize = 7;
+        let screenSize = 6;
         const uiService = {
             start(env) {
                 Object.defineProperty(env, "isSmall", {
@@ -8445,7 +8498,7 @@ QUnit.module("Views", (hooks) => {
         await assertFormContainsNButtonsWithSizeClass(0, 2);
         await assertFormContainsNButtonsWithSizeClass(1, 3);
         await assertFormContainsNButtonsWithSizeClass(2, 4);
-        await assertFormContainsNButtonsWithSizeClass(3, 6);
+        await assertFormContainsNButtonsWithSizeClass(3, 7);
         await assertFormContainsNButtonsWithSizeClass(4, 3);
         await assertFormContainsNButtonsWithSizeClass(5, 4);
         await assertFormContainsNButtonsWithSizeClass(6, 7);

@@ -508,6 +508,7 @@ class Environment(Mapping):
                 return env
 
         # otherwise create environment, and add it in the set
+        assert isinstance(cr, BaseCursor)
         self = object.__new__(cls)
         self.cr, self.uid, self.context, self.su = self.args = (cr, uid, frozendict(context), su)
         self.uid_origin = uid_origin
@@ -696,6 +697,7 @@ class Environment(Mapping):
             This may be useful when recovering from a failed ORM operation.
         """
         lazy_property.reset_all(self)
+        self._cache_key.clear()
         self.transaction.clear()
 
     def invalidate_all(self, flush=True):
@@ -813,6 +815,8 @@ class Environment(Mapping):
                     return get_context('lang') or None
                 elif key == 'active_test':
                     return get_context('active_test', field.context.get('active_test', True))
+                elif key.startswith('bin_size'):
+                    return bool(get_context(key))
                 else:
                     val = get_context(key)
                     if type(val) is list:
@@ -872,6 +876,7 @@ class Transaction:
         for env in self.envs:
             env.registry = self.registry
             lazy_property.reset_all(env)
+            env._cache_key.clear()
         self.clear()
 
 
@@ -1361,3 +1366,4 @@ class Starred:
 # keep those imports here in order to handle cyclic dependencies correctly
 from odoo import SUPERUSER_ID
 from odoo.modules.registry import Registry
+from .sql_db import BaseCursor

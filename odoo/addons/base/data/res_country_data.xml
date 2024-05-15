@@ -858,6 +858,7 @@
         <record id="lu" model="res.country">
             <field name="name">Luxembourg</field>
             <field name="code">lu</field>
+            <field eval="'%(street)s\n%(street2)s\n%(zip)s %(city)s \n%(country_name)s'" name="address_format" />
             <field name="currency_id" ref="EUR" />
             <field eval="352" name="phone_code" />
             <field name="vat_label">VAT</field>
@@ -1093,7 +1094,7 @@
             <field name="code">nz</field>
             <field name="currency_id" ref="NZD" />
             <field eval="64" name="phone_code" />
-            <field name="vat_label">IRD/GST</field>
+            <field name="vat_label">GST</field>
         </record>
         <record id="om" model="res.country">
             <field name="name">Oman</field>
@@ -1584,6 +1585,7 @@
             <field name="code">zm</field>
             <field name="currency_id" ref="ZMW" />
             <field eval="260" name="phone_code" />
+            <field name="vat_label">TPIN</field>
         </record>
         <record id="zw" model="res.country">
             <field name="name">Zimbabwe</field>

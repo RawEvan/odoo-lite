@@ -164,7 +164,7 @@ QUnit.module("Components", (hooks) => {
         assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
     });
 
-    QUnit.test("close dropdown on escape keydown", async (assert) => {
+    QUnit.test("cancel result on escape keydown", async (assert) => {
         class Parent extends Component {}
         Parent.components = { AutoComplete };
         Parent.template = xml`
@@ -172,17 +172,21 @@ QUnit.module("Components", (hooks) => {
                 value="'Hello'"
                 sources="[{ options: [{ label: 'World' }, { label: 'Hello' }] }]"
                 onSelect="() => {}"
+                autoSelect="true"
             />
         `;
 
         await mount(Parent, target, { env });
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
 
         await triggerEvents(target, ".o-autocomplete--input", ["focus", "click"]);
         assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
+        await editInput(target, ".o-autocomplete--input", "H");
 
         await triggerEvent(target, ".o-autocomplete--input", "keydown", { key: "Escape" });
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
     });
 
     QUnit.test("select input text on first focus", async (assert) => {
@@ -198,7 +202,7 @@ QUnit.module("Components", (hooks) => {
         assert.strictEqual(el.value.substring(el.selectionStart, el.selectionEnd), "Bar");
     });
 
-    QUnit.test("scroll outside should close dropdown", async (assert) => {
+    QUnit.test("scroll outside should cancel result", async (assert) => {
         class Parent extends Component {}
         Parent.components = { AutoComplete };
         Parent.template = xml`
@@ -206,17 +210,21 @@ QUnit.module("Components", (hooks) => {
                 value="'Hello'"
                 sources="[{ options: [{ label: 'World' }, { label: 'Hello' }] }]"
                 onSelect="() => {}"
+                autoSelect="true"
             />
         `;
 
         await mount(Parent, target, { env });
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
 
         await click(target, ".o-autocomplete--input");
         assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
+        await editInput(target, ".o-autocomplete--input", "H");
 
         await triggerEvent(target, null, "scroll");
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
     });
 
     QUnit.test("scroll inside should keep dropdown open", async (assert) => {
@@ -240,7 +248,33 @@ QUnit.module("Components", (hooks) => {
         assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
     });
 
-    QUnit.test("losing focus should close dropdown", async (assert) => {
+    QUnit.test("losing focus should cancel result", async (assert) => {
+        class Parent extends Component {}
+        Parent.components = { AutoComplete };
+        Parent.template = xml`
+            <AutoComplete
+                value="'Hello'"
+                sources="[{ options: [{ label: 'World' }, { label: 'Hello' }] }]"
+                onSelect="() => {}"
+                autoSelect="true"
+            />
+        `;
+
+        await mount(Parent, target, { env });
+        assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
+
+        await triggerEvents(target, ".o-autocomplete--input", ["focus", "click"]);
+        assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
+        await editInput(target, ".o-autocomplete--input", "H");
+
+        await triggerEvent(target, "", "pointerdown");
+        await triggerEvent(target, ".o-autocomplete--input", "blur");
+        assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
+    });
+
+    QUnit.test("click out after clearing input", async (assert) => {
         class Parent extends Component {}
         Parent.components = { AutoComplete };
         Parent.template = xml`
@@ -253,12 +287,16 @@ QUnit.module("Components", (hooks) => {
 
         await mount(Parent, target, { env });
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "Hello");
 
         await triggerEvents(target, ".o-autocomplete--input", ["focus", "click"]);
         assert.containsOnce(target, ".o-autocomplete--dropdown-menu");
+        await editInput(target, ".o-autocomplete--input", "");
 
+        await triggerEvent(target, "", "pointerdown");
         await triggerEvent(target, ".o-autocomplete--input", "blur");
         assert.containsNone(target, ".o-autocomplete--dropdown-menu");
+        assert.strictEqual(target.querySelector(".o-autocomplete--input").value, "");
     });
 
     QUnit.test("open twice should not display previous results", async (assert) => {
@@ -495,10 +533,9 @@ QUnit.module("Components", (hooks) => {
             onChange() {
                 assert.step("change");
             }
-            onSelect(option, params) {
+            onSelect(option) {
                 target.querySelector(".o-autocomplete--input").value = option.label;
                 assert.step("select " + option.label);
-                assert.notOk(params.triggeredOnBlur);
             }
             onBlur() {
                 assert.step("blur");
@@ -540,7 +577,11 @@ QUnit.module("Components", (hooks) => {
         assert.strictEqual(mousedownEvent.defaultPrevented, false);
         await triggerEvent(input, "", "change");
         await triggerEvent(input, "", "blur");
-        await click(target.querySelectorAll(".o-autocomplete--dropdown-item")[1], "");
+        await triggerEvent(
+            target.querySelectorAll(".o-autocomplete--dropdown-item")[1],
+            "",
+            "click"
+        );
         assert.verifySteps(["change", "select Hello"]);
         assert.strictEqual(input, document.activeElement);
 
@@ -550,8 +591,60 @@ QUnit.module("Components", (hooks) => {
         await triggerEvent(input, "", "input");
         await triggerEvent(target, "", "pointerdown");
         await triggerEvent(input, "", "change");
-        input.blur();
-        await click(target, "");
+        await triggerEvent(input, "", "blur");
+        await triggerEvent(target, "", "click");
         assert.verifySteps(["change", "blur"]);
+    });
+
+    QUnit.test("autocomplete always closes on click away [REQUIRE FOCUS]", async (assert) => {
+        class Parent extends Component {
+            setup() {
+                this.state = useState({
+                    value: "",
+                });
+            }
+            get sources() {
+                return [
+                    {
+                        options: [{ label: "World" }, { label: "Hello" }],
+                    },
+                ];
+            }
+            onSelect(option) {
+                target.querySelector(".o-autocomplete--input").value = option.label;
+            }
+        }
+        Parent.components = { AutoComplete };
+        Parent.template = xml`
+            <AutoComplete
+                value="state.value"
+                sources="sources"
+                onSelect.bind="onSelect"
+                autoSelect="true"
+            />
+        `;
+        await mount(Parent, target, { env });
+        assert.containsOnce(target, ".o-autocomplete--input");
+        const input = target.querySelector(".o-autocomplete--input");
+        await click(input);
+        assert.containsN(target, ".o-autocomplete--dropdown-item", 2);
+        const pointerdownEvent = await triggerEvent(
+            target.querySelectorAll(".o-autocomplete--dropdown-item")[1],
+            "",
+            "pointerdown"
+        );
+        assert.strictEqual(pointerdownEvent.defaultPrevented, false);
+        const mousedownEvent = await triggerEvent(
+            target.querySelectorAll(".o-autocomplete--dropdown-item")[1],
+            "",
+            "mousedown"
+        );
+        assert.strictEqual(mousedownEvent.defaultPrevented, false);
+        await triggerEvent(input, "", "blur");
+        await triggerEvent(target, "", "pointerup");
+        await triggerEvent(target, "", "mouseup");
+        assert.containsN(target, ".o-autocomplete--dropdown-item", 2);
+        await triggerEvent(target, "", "pointerdown");
+        assert.containsNone(target, ".o-autocomplete--dropdown-item");
     });
 });

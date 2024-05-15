@@ -85,6 +85,14 @@ export class Colorpicker extends Component {
             this.start();
         });
         onWillUpdateProps((newProps) => {
+            if (!this.el) {
+                // There is legacy code that can trigger the instantiation of the
+                // link tool when one of it's parent component is not in the dom. If
+                // that parent element is not in the dom, owl will not return
+                // `this.linkComponentWrapperRef.el` because of a check (see
+                // `inOwnerDocument`).
+                return;
+            }
             if (newProps.selectedColor) {
                 this.setSelectedColor(newProps.selectedColor);
             }
@@ -502,8 +510,8 @@ export class Colorpicker extends Component {
     _onChangeInputs(ev) {
         switch ($(ev.target).data("colorMethod")) {
             case "hex":
-                this._updateHex(this.$el.find(".o_hex_input").val());
-                break;
+                // Handled by the "input" event (see "_onHexColorInput").
+                return;
             case "rgb":
                 this._updateRgba(
                     parseInt(this.$el.find(".o_red_input").val()),
@@ -524,5 +532,19 @@ export class Colorpicker extends Component {
         }
         this._updateUI();
         this._colorSelected();
+    }
+    /**
+     * Called when the hex color input's input event is triggered.
+     *
+     * @private
+     * @param {Event} ev
+     */
+    _onHexColorInput(ev) {
+        const hexColorValue = ev.target.value.replaceAll("#", "");
+        if (hexColorValue.length === 6) {
+            this._updateHex(`#${hexColorValue}`);
+            this._updateUI();
+            this._colorSelected();
+        }
     }
 }
