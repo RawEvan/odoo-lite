@@ -46,7 +46,9 @@ jobs:
       run: |
         pwd
         cd odoo-lite
-        gh pr create -B lite-17 -H official-17 --title 'Merge official-17 into lite-17' --body 'Created by Github action'
-        gh pr merge lite-17
+        gh pr create -B lite-17 -H official-17 --title 'Merge official-17 into lite-17' --body 'Created by Github action' && \
+        gh pr merge lite-17 && \
+        echo "Merged PR automatically" || \
+        echo "Merge PR failed"
       env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
