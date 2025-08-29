@@ -1822,8 +1822,13 @@ class _String(Field):
 
         # not dirty fields
         if not dirty:
-            lang = self._lang(records.env)
-            cache.update_raw(records, self, [{lang: cache_value} for _id in records._ids], dirty=False)
+            if self.compute and self.inverse:
+                # invalidate the values in other languages to force their recomputation
+                lang = self._lang(records.env)
+                values = [{lang: cache_value} for _id in records._ids]
+                cache.update_raw(records, self, values, dirty=False)
+            else:
+                cache.update(records, self, itertools.repeat(cache_value), dirty=False)
             return
 
         # model translation
@@ -3358,9 +3363,10 @@ class Properties(Field):
             assert self.definition.count(".") == 1
             self.definition_record, self.definition_record_field = self.definition.rsplit('.', 1)
 
-            # make the field computed, and set its dependencies
-            self._depends = (self.definition_record, )
-            self.compute = self._compute
+            if not self.inherited_field:
+                # make the field computed, and set its dependencies
+                self._depends = (self.definition_record, )
+                self.compute = self._compute
 
     def setup_related(self, model):
         super().setup_related(model)
