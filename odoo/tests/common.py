@@ -17,6 +17,7 @@ import os
 import pathlib
 import platform
 import pprint
+import psutil
 import re
 import shutil
 import signal
@@ -314,6 +315,15 @@ class BaseCase(case.TestCase, metaclass=MetaCase):
 
     @classmethod
     def setUpClass(cls):
+        def check_remaining_processes():
+            current_process = psutil.Process()
+            children = current_process.children(recursive=False)
+            for child in children:
+                _logger.warning('A child process was found, terminating it: %s', child)
+                child.terminate()
+            psutil.wait_procs(children, timeout=10)  # mainly to avoid a zombie process that would be logged again at the end.
+        cls.addClassCleanup(check_remaining_processes)
+
         def check_remaining_patchers():
             for patcher in _patch._active_patches:
                 _logger.warning("A patcher (targeting %s.%s) was remaining active at the end of %s, disabling it...", patcher.target, patcher.attribute, cls.__name__)
@@ -1051,32 +1061,41 @@ class ChromeBrowser:
 
     def stop(self):
         if hasattr(self, 'ws'):
-            self._websocket_send('Page.stopScreencast')
-            if self.screencasts_dir:
-                screencasts_frames_dir = self.screencasts_frames_dir
-                self.screencasts_dir = None
-                if os.path.isdir(screencasts_frames_dir):
-                    shutil.rmtree(screencasts_frames_dir, ignore_errors=True)
+            try:
+                self._websocket_send('Page.stopScreencast')
+                if self.screencasts_dir:
+                    screencasts_frames_dir = self.screencasts_frames_dir
+                    self.screencasts_dir = None
+                    if os.path.isdir(screencasts_frames_dir):
+                        shutil.rmtree(screencasts_frames_dir, ignore_errors=True)
 
-            self._websocket_request('Page.stopLoading')
-            self._websocket_request('Runtime.evaluate', params={'expression': """
-            ('serviceWorker' in navigator) &&
-                navigator.serviceWorker.getRegistrations().then(
-                    registrations => Promise.all(registrations.map(r => r.unregister()))
-                )
-            """, 'awaitPromise': True})
-            # wait for the screenshot or whatever
-            wait(self._responses.values(), 10)
-            self._result.cancel()
+                self._websocket_request('Page.stopLoading')
+                self._websocket_request('Runtime.evaluate', params={'expression': """
+                ('serviceWorker' in navigator) &&
+                    navigator.serviceWorker.getRegistrations().then(
+                        registrations => Promise.all(registrations.map(r => r.unregister()))
+                    )
+                """, 'awaitPromise': True})
+                # wait for the screenshot or whatever
+                wait(self._responses.values(), 10)
+                self._result.cancel()
 
-            self._logger.info("Closing chrome headless with pid %s", self.chrome.pid)
-            self._websocket_request('Browser.close')
+                self._logger.info("Closing chrome headless with pid %s", self.chrome.pid)
+                self._websocket_request('Browser.close')
+            except ChromeBrowserException as e:
+                _logger.runbot("WS error during browser shutdown: %s", e)
+            except Exception:  # noqa: BLE001
+                _logger.warning("Error during browser shutdown", exc_info=True)
             self._logger.info("Closing websocket connection")
             self.ws.close()
         if self.chrome:
             self._logger.info("Terminating chrome headless with pid %s", self.chrome.pid)
             self.chrome.terminate()
-            self.chrome.wait(15)
+            try:
+                self.chrome.wait(15)
+            except subprocess.TimeoutExpired:
+                self._logger.warning("Killing chrome headless with pid %s: still alive", self.chrome.pid)
+                self.chrome.kill()
 
         if self.user_data_dir and os.path.isdir(self.user_data_dir) and self.user_data_dir != '/':
             self._logger.info('Removing chrome user profile "%s"', self.user_data_dir)
