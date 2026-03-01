@@ -44,6 +44,7 @@ from xmlrpc import client as xmlrpclib
 import requests
 import werkzeug.urls
 from lxml import etree, html
+from passlib.context import CryptContext
 from requests import PreparedRequest, Session
 from urllib3.util import Url, parse_url
 
@@ -108,6 +109,12 @@ CHECK_BROWSER_SLEEP = 0.1 # seconds
 CHECK_BROWSER_ITERATIONS = 100
 BROWSER_WAIT = CHECK_BROWSER_SLEEP * CHECK_BROWSER_ITERATIONS # seconds
 TEST_CURSOR_COOKIE_NAME = 'test_request_key'
+
+IGNORED_MSGS = re.compile(r"""
+    failed\ to\ fetch  # base error
+  | connectionlosterror:  # conversion by offlineFailToFetchErrorHandler
+  | assetsloadingerror: # lazy loaded bundle
+""", flags=re.VERBOSE | re.IGNORECASE).search
 
 def get_db_name():
     db = odoo.tools.config['db_name']
@@ -857,6 +864,15 @@ class TransactionCase(BaseCase):
 
         cls.env = api.Environment(cls.cr, odoo.SUPERUSER_ID, {})
 
+        # speedup CryptContext. Many user an password are done during tests, avoid spending time hasing password with many rounds
+        def _crypt_context(self):  # noqa: ARG001
+            return CryptContext(
+                ['pbkdf2_sha512', 'plaintext'],
+                pbkdf2_sha512__rounds=1,
+            )
+        cls._crypt_context_patcher = patch('odoo.addons.base.models.res_users.Users._crypt_context', _crypt_context)
+        cls.startClassPatcher(cls._crypt_context_patcher)
+
     def setUp(self):
         super().setUp()
 
@@ -1417,7 +1433,7 @@ class ChromeBrowser:
 
         log_type = type
         _logger = self._logger.getChild('browser')
-        if self._result.done() and 'failed to fetch' in message.casefold():
+        if self._result.done() and IGNORED_MSGS(message):
             log_type = 'dir'
         _logger.log(
             self._TO_LEVEL.get(log_type, logging.INFO),
@@ -1492,7 +1508,7 @@ which leads to stray network requests and inconsistencies."""
             message += '\n' + stack
 
         if self._result.done():
-            if 'failed to fetch' not in message.casefold():
+            if not IGNORED_MSGS(message):
                 self._logger.getChild('browser').error(
                     "Exception received after termination: %s", message)
             return
@@ -1930,6 +1946,9 @@ class HttpCase(TransactionCase):
 
         start_time = time.time()
         request_threads = get_http_request_threads()
+        if not request_threads:
+            return
+
         self._logger.info('waiting for threads: %s', request_threads)
 
         for thread in request_threads:
