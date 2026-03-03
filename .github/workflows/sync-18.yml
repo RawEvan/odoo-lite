@@ -42,13 +42,16 @@ jobs:
         git config user.email 'github-actions[bot]@users.noreply.github.com'
         git add .
         git commit -m "Sync changes from official Odoo" && git push || echo "Clean repo"
-    - name: Create Pull Request
+    - name: Create and merge Pull Request
       run: |
-        pwd
         cd odoo-lite
-        gh pr create -B lite-18 -H official-18 --title 'Merge official-18 into lite-18' --body 'Created by Github action' && \
-        gh pr merge lite-18 && \
-        echo "Merged PR automatically" || \
-        echo "Merge PR failed"
+        PR_URL=$(gh pr create -B lite-18 -H official-18 --title 'Merge official-18 into lite-18' --body 'Created by Github action' 2>/dev/null || echo "")
+        if [ -n "$PR_URL" ]; then
+          PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]*$')
+          gh pr merge "$PR_NUMBER" --merge --delete-branch=false
+          echo "Merged PR #$PR_NUMBER automatically"
+        else
+          echo "No PR created or already exists"
+        fi
       env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
