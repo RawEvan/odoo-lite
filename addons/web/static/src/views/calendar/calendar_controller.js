@@ -57,6 +57,7 @@ export class CalendarController extends Component {
                 domain: this.props.domain,
                 fields: this.props.fields,
                 allFilter: this.props.state?.allFilter ?? {},
+                date: this.props.state?.date,
             },
             {
                 onWillStart: this.onWillStartModel.bind(this),
@@ -372,6 +373,7 @@ export class CalendarController extends Component {
         browser.localStorage.setItem("calendar.isWeekendVisible", this.state.isWeekendVisible);
     }
 }
+CalendarController.props = ["*"];
 CalendarController.components = {
     DatePicker: DateTimePicker,
     FilterPanel: CalendarFilterPanel,

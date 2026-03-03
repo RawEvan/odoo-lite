@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
+
+from __future__ import annotations
+
 import codecs
 import fnmatch
 import functools
@@ -123,7 +126,7 @@ _LOCALE2WIN32 = {
     'sv_SE': 'Swedish_Sweden',
     'ta_IN': 'English_Australia',
     'th_TH': 'Thai_Thailand',
-    'tr_TR': 'Turkish_Turkey',
+    'tr_TR': 'Turkish_Türkiye',
     'uk_UA': 'Ukrainian_Ukraine',
     'vi_VN': 'Vietnamese_Viet Nam',
     'tlh_TLH': 'Klingon',
@@ -154,10 +157,11 @@ TRANSLATED_ELEMENTS = {
 
 # Which attributes must be translated. This is a dict, where the value indicates
 # a condition for a node to have the attribute translatable.
+# ⚠ Note that it implicitly includes their t-attf-* equivalent.
 TRANSLATED_ATTRS = dict.fromkeys({
     'string', 'add-label', 'help', 'sum', 'avg', 'confirm', 'placeholder', 'alt', 'title', 'aria-label',
     'aria-keyshortcuts', 'aria-placeholder', 'aria-roledescription', 'aria-valuetext',
-    'value_label', 'data-tooltip', 'data-editor-message', 'label',
+    'value_label', 'data-tooltip', 'data-editor-message', 'label', 'cancel-label', 'confirm-label', 'confirm-title',
 }, lambda e: True)
 
 def translate_attrib_value(node):
@@ -176,7 +180,21 @@ TRANSLATED_ATTRS.update(
     **{f't-attf-{attr}': cond for attr, cond in TRANSLATED_ATTRS.items()},
 )
 
+# This should match the list provided to OWL (see translatableAttributes).
+OWL_TRANSLATED_ATTRS = {
+    "alt",
+    "aria-label",
+    "aria-placeholder",
+    "aria-roledescription",
+    "aria-valuetext",
+    "data-tooltip",
+    "label",
+    "placeholder",
+    "title",
+}
+
 avoid_pattern = re.compile(r"\s*<!DOCTYPE", re.IGNORECASE | re.MULTILINE | re.UNICODE)
+space_pattern = re.compile(r"[\s\uFEFF]*")  # web_editor uses \uFEFF as ZWNBSP
 
 
 def translate_xml_node(node, callback, parse, serialize):
@@ -190,36 +208,52 @@ def translate_xml_node(node, callback, parse, serialize):
 
     def nonspace(text):
         """ Return whether ``text`` is a string with non-space characters. """
-        return bool(text) and not text.isspace()
+        return bool(text) and not space_pattern.fullmatch(text)
 
-    def translatable(node):
+    def is_force_inline(node):
+        """ Return whether ``node`` is marked as it should be translated as
+            one term.
+        """
+        return "o_translate_inline" in node.attrib.get("class", "").split()
+
+    def translatable(node, force_inline=False):
         """ Return whether the given node can be translated as a whole. """
+        # Some specific nodes (e.g., text highlights) have an auto-updated DOM
+        # structure that makes them impossible to translate.
+        # The introduction of a translation `<span>` in the middle of their
+        # hierarchy breaks their functionalities. We need to force them to be
+        # translated as a whole using the `o_translate_inline` class.
+        force_inline = force_inline or is_force_inline(node)
         return (
-            node.tag in TRANSLATED_ELEMENTS
-            and not any(key.startswith("t-") for key in node.attrib)
-            and all(translatable(child) for child in node)
+            (force_inline or node.tag in TRANSLATED_ELEMENTS)
+            # Nodes with directives are not translatable. Directives usually
+            # start with `t-`, but this prefix is optional for `groups` (see
+            # `_compile_directive_groups` which reads `t-groups` and `groups`)
+            and not any(key.startswith("t-") or key == 'groups' for key in node.attrib)
+            and all(translatable(child, force_inline) for child in node)
         )
 
-    def hastext(node, pos=0):
+    def hastext(node, pos=0, force_inline=False):
         """ Return whether the given node contains some text to translate at the
             given child node position.  The text may be before the child node,
             inside it, or after it.
         """
+        force_inline = force_inline or is_force_inline(node)
         return (
             # there is some text before node[pos]
             nonspace(node[pos-1].tail if pos else node.text)
             or (
                 pos < len(node)
-                and translatable(node[pos])
+                and translatable(node[pos], force_inline)
                 and (
                     any(  # attribute to translate
                         val and key in TRANSLATED_ATTRS and TRANSLATED_ATTRS[key](node[pos])
                         for key, val in node[pos].attrib.items()
                     )
                     # node[pos] contains some text to translate
-                    or hastext(node[pos])
+                    or hastext(node[pos], 0, force_inline)
                     # node[pos] has no text, but there is some text after it
-                    or hastext(node, pos + 1)
+                    or hastext(node, pos + 1, force_inline)
                 )
             )
         )
@@ -243,7 +277,7 @@ def translate_xml_node(node, callback, parse, serialize):
                 # into a <div> element
                 div = etree.Element('div')
                 div.text = (node[pos-1].tail if pos else node.text) or ''
-                while pos < len(node) and translatable(node[pos]):
+                while pos < len(node) and translatable(node[pos], is_force_inline(node)):
                     div.append(node[pos])
 
                 # translate the content of the <div> element as a whole
@@ -305,15 +339,13 @@ def xml_term_adapter(term_en):
     orig_node = parse_xml(f"<div>{term_en}</div>")
 
     def same_struct_iter(left, right):
-        if left.tag != right.tag:
+        if left.tag != right.tag or len(left) != len(right):
             raise ValueError("Non matching struct")
         yield left, right
         left_iter = left.iterchildren()
         right_iter = right.iterchildren()
         for lc, rc in zip(left_iter, right_iter):
             yield from same_struct_iter(lc, rc)
-        if next(left_iter, None) is not None or next(right_iter, None) is not None:
-            raise ValueError("Non matching struct")
 
     def adapter(term):
         new_node = parse_xml(f"<div>{term}</div>")
@@ -322,10 +354,10 @@ def xml_term_adapter(term_en):
                 removed_attrs = [k for k in new_n.attrib if k in MODIFIER_ATTRS and k not in orig_n.attrib]
                 for k in removed_attrs:
                     del new_n.attrib[k]
-                keep_attrs = {k: v for k, v in orig_n.attrib.items() if k in MODIFIER_ATTRS}
+                keep_attrs = {k: v for k, v in orig_n.attrib.items()}
                 new_n.attrib.update(keep_attrs)
         except ValueError:  # non-matching structure
-            return term
+            return None
 
         # remove tags <div> and </div> from result
         return serialize_xml(new_node)[5:-6]
@@ -338,7 +370,7 @@ _HTML_PARSER = etree.HTMLParser(encoding='utf8')
 def parse_html(text):
     try:
         parse = html.fragment_fromstring(text, parser=_HTML_PARSER)
-    except TypeError as e:
+    except (etree.ParserError, TypeError) as e:
         raise UserError(_("Error while parsing view:\n\n%s") % e) from e
     return parse
 
@@ -386,7 +418,7 @@ def html_translate(callback, value):
         root = parse_html("<div>%s</div>" % value)
         result = translate_xml_node(root, callback, parse_html, serialize_html)
         # remove tags <div> and </div> from result
-        value = serialize_html(result)[5:-6]
+        value = serialize_html(result)[5:-6].replace('\xa0', '&nbsp;')
     except ValueError:
         _logger.exception("Cannot translate malformed HTML, using source value instead")
 
@@ -935,18 +967,12 @@ def _extract_translatable_qweb_terms(element, callback):
                 and el.get("t-translation", '').strip() != "off"):
 
             _push(callback, el.text, el.sourceline)
-            # Do not export terms contained on the Component directive of OWL
-            # attributes in this context are most of the time variables,
-            # not real HTML attributes.
-            # Node tags starting with a capital letter are considered OWL Components
-            # and a widespread convention and good practice for DOM tags is to write
-            # them all lower case.
-            # https://www.w3schools.com/html/html5_syntax.asp
-            # https://github.com/odoo/owl/blob/master/doc/reference/component.md#composition
-            if not el.tag[0].isupper() and 't-component' not in el.attrib and 't-set-slot' not in el.attrib:
-                for att in TRANSLATED_ATTRS:
-                    if att in el.attrib:
-                        _push(callback, el.attrib[att], el.sourceline)
+            # heuristic: tags with names starting with an uppercase letter are
+            # component nodes
+            is_component = el.tag[0].isupper() or "t-component" in el.attrib or "t-set-slot" in el.attrib
+            for attr in el.attrib:
+                if (not is_component and attr in OWL_TRANSLATED_ATTRS) or (is_component and attr.endswith(".translate")):
+                    _push(callback, el.attrib[attr], el.sourceline)
             _extract_translatable_qweb_terms(el, callback)
         _push(callback, el.tail, el.sourceline)
 
@@ -1003,28 +1029,28 @@ def extract_spreadsheet_terms(fileobj, keywords, comment_tags, options):
     :return: an iterator over ``(lineno, funcname, message, comments)``
              tuples
     """
-    terms = []
+    terms = set()
     data = json.load(fileobj)
     for sheet in data.get('sheets', []):
         for cell in sheet['cells'].values():
             content = cell.get('content', '')
             if content.startswith('='):
-                terms += extract_formula_terms(content)
+                terms.update(extract_formula_terms(content))
             else:
                 markdown_link = re.fullmatch(r'\[(.+)\]\(.+\)', content)
                 if markdown_link:
-                    terms.append(markdown_link[1])
+                    terms.add(markdown_link[1])
         for figure in sheet['figures']:
-            terms.append(figure['data']['title'])
+            terms.add(figure['data']['title'])
             if 'baselineDescr' in figure['data']:
-                terms.append(figure['data']['baselineDescr'])
+                terms.add(figure['data']['baselineDescr'])
     pivots = data.get('pivots', {}).values()
     lists = data.get('lists', {}).values()
     for data_source in itertools.chain(lists, pivots):
         if 'name' in data_source:
-            terms.append(data_source['name'])
+            terms.add(data_source['name'])
     for global_filter in data.get('globalFilters', []):
-        terms.append(global_filter['label'])
+        terms.add(global_filter['label'])
     return (
         (0, None, term, [])
         for term in terms
@@ -1318,6 +1344,8 @@ class TranslationModuleReader(TranslationReader):
         self._path_list.append((config['root_path'], False))
         _logger.debug("Scanning modules at paths: %s", self._path_list)
 
+        spreadsheet_files_regex = re.compile(r".*_dashboard(\.osheet)?\.json$")
+
         for (path, recursive) in self._path_list:
             _logger.debug("Scanning files of modules at %s", path)
             for root, dummy, files in os.walk(path, followlinks=True):
@@ -1336,7 +1364,7 @@ class TranslationModuleReader(TranslationReader):
                         self._babel_extract_terms(fname, path, root, 'odoo.tools.translate:babel_extract_qweb',
                                                   extra_comments=[JAVASCRIPT_TRANSLATION_COMMENT])
                 if fnmatch.fnmatch(root, '*/data/*'):
-                    for fname in fnmatch.filter(files, '*_dashboard.json'):
+                    for fname in filter(spreadsheet_files_regex.match, files):
                         self._babel_extract_terms(fname, path, root, 'odoo.tools.translate:extract_spreadsheet_terms',
                                                   extra_comments=[JAVASCRIPT_TRANSLATION_COMMENT])
                 if not recursive:
@@ -1372,7 +1400,7 @@ class TranslationImporter:
                      the language must be present and activated in the database
         :param xmlids: if given, only translations for records with xmlid in xmlids will be loaded
         """
-        with suppress(FileNotFoundError), file_open(filepath, mode='rb') as fileobj:
+        with suppress(FileNotFoundError), file_open(filepath, mode='rb', env=self.env) as fileobj:
             _logger.info('loading base translation file %s for language %s', filepath, lang)
             fileformat = os.path.splitext(filepath)[-1][1:].lower()
             self.load(fileobj, fileformat, lang, xmlids=xmlids)
@@ -1491,15 +1519,20 @@ class TranslationImporter:
                                 translations.update({k: v for k, v in translation_dictionary[term_en].items() if v != term_en})
                                 translation_dictionary[term_en] = translations
 
+                        changed_values = {}
                         for lang in langs:
                             # translate and confirm model_terms translations
-                            values[lang] = field.translate(lambda term: translation_dictionary.get(term, {}).get(lang), _value_en)
-                            values.pop(f'_{lang}', None)
-                        params.extend((id_, Json(values)))
+                            new_val = field.translate(lambda term: translation_dictionary.get(term, {}).get(lang), _value_en)
+                            if values.get(lang, None) != new_val:
+                                changed_values[lang] = new_val
+                            if f'_{lang}' in values:
+                                changed_values[f'_{lang}'] = None
+                        if changed_values:
+                            params.extend((id_, Json(changed_values)))
                     if params:
                         env.cr.execute(f"""
                             UPDATE "{model_table}" AS m
-                            SET "{field_name}" =  t.value
+                            SET "{field_name}" = jsonb_strip_nulls("{field_name}" || t.value)
                             FROM (
                                 VALUES {', '.join(['(%s, %s::jsonb)'] * (len(params) // 2))}
                             ) AS t(id, value)
@@ -1611,23 +1644,25 @@ def load_language(cr, lang):
     installer.lang_install()
 
 
-
 def get_po_paths(module_name: str, lang: str):
-    lang_base = lang.split('_')[0]
+    return get_po_paths_env(module_name, lang)
+
+
+def get_po_paths_env(module_name: str, lang: str, env: odoo.api.Environment | None = None):
+    lang_base = lang.split('_', 1)[0]
     # Load the base as a fallback in case a translation is missing:
     po_names = [lang_base, lang]
     # Exception for Spanish locales: they have two bases, es and es_419:
     if lang_base == 'es' and lang not in ('es_ES', 'es_419'):
         po_names.insert(1, 'es_419')
-    po_paths = [
-        path
+    po_paths = (
+        join(module_name, dir_, filename + '.po')
         for filename in po_names
         for dir_ in ('i18n', 'i18n_extra')
-        if (path := join(module_name, dir_, filename + '.po'))
-    ]
+    )
     for path in po_paths:
         with suppress(FileNotFoundError):
-            yield file_path(path)
+            yield file_path(path, env=env)
 
 
 class CodeTranslations:
@@ -1716,6 +1751,7 @@ def _get_translation_upgrade_queries(cr, field):
     cleanup_queries = []
 
     if field.translate is True:
+        emtpy_src = """'{"en_US": ""}'::jsonb"""
         query = f"""
             WITH t AS (
                 SELECT it.res_id as res_id, jsonb_object_agg(it.lang, it.value) AS value, bool_or(imd.noupdate) AS noupdate
@@ -1726,7 +1762,8 @@ def _get_translation_upgrade_queries(cr, field):
               GROUP BY it.res_id
             )
             UPDATE {Model._table} m
-               SET "{field.name}" = CASE WHEN t.noupdate IS FALSE THEN t.value || m."{field.name}"
+               SET "{field.name}" = CASE WHEN m."{field.name}" IS NULL THEN {emtpy_src} || t.value
+                                         WHEN t.noupdate IS FALSE THEN t.value || m."{field.name}"
                                          ELSE m."{field.name}" || t.value
                                      END
               FROM t
@@ -1734,7 +1771,7 @@ def _get_translation_upgrade_queries(cr, field):
         """
         migrate_queries.append(cr.mogrify(query, [Model._name, translation_name]).decode())
 
-        query = "DELETE FROM _ir_translation WHERE type = 'model' AND name = %s"
+        query = "DELETE FROM _ir_translation WHERE type = 'model' AND state = 'translated' AND name = %s"
         cleanup_queries.append(cr.mogrify(query, [translation_name]).decode())
 
     # upgrade model_terms translation: one update per field per record
@@ -1808,7 +1845,7 @@ def _get_translation_upgrade_queries(cr, field):
             query = f'UPDATE "{Model._table}" SET "{field.name}" = %s WHERE id = %s'
             migrate_queries.append(cr.mogrify(query, [Json(new_values), id_]).decode())
 
-        query = "DELETE FROM _ir_translation WHERE type = 'model_terms' AND name = %s"
+        query = "DELETE FROM _ir_translation WHERE type = 'model_terms' AND state = 'translated' AND name = %s"
         cleanup_queries.append(cr.mogrify(query, [translation_name]).decode())
 
     return migrate_queries, cleanup_queries

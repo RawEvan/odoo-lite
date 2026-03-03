@@ -15,6 +15,7 @@ import logging
 from operator import getitem
 import requests
 import json
+import contextlib
 
 from pytz import timezone
 
@@ -534,7 +535,7 @@ class IrActionsServer(models.Model):
 
     update_field_id = fields.Many2one('ir.model.fields', string='Field to Update', ondelete='cascade', compute='_compute_crud_relations', store=True, readonly=False)
     update_path = fields.Char(string='Field to Update Path', help="Path to the field to update, e.g. 'partner_id.name'", default=_default_update_path)
-    update_related_model_id = fields.Many2one('ir.model', compute='_compute_crud_relations', store=True)
+    update_related_model_id = fields.Many2one('ir.model', compute='_compute_crud_relations', readonly=False, store=True)
     update_field_type = fields.Selection(related='update_field_id.ttype', readonly=True)
     update_m2m_operation = fields.Selection([
         ('add', 'Adding'),
@@ -661,8 +662,6 @@ class IrActionsServer(models.Model):
                     raise ValidationError(_("The path to the field to update contains a non-relational field (%s) that is not the last field in the path. You can't traverse non-relational fields (even in the quantum realm). Make sure only the last field in the path is non-relational.", field_name))
                 if isinstance(field, fields.Json):
                     raise ValidationError(_("I'm sorry to say that JSON fields (such as %s) are currently not supported.", field_name))
-                elif field.readonly:
-                    raise ValidationError(_("The field to update (%s) is read-only. You can't update a read-only field - even when asking nicely.", field_name))
         target_records = None
         if record is not None:
             target_records = reduce(getitem, path[:-1], record)
@@ -679,7 +678,11 @@ class IrActionsServer(models.Model):
             return ''
         model = self.env[self.model_id.model]
         pretty_path = []
+        field = None
         for field_name in path.split('.'):
+            if field and field.type == 'properties':
+                pretty_path.append(field_name)
+                continue
             field = model._fields[field_name]
             field_id = self.env['ir.model.fields']._get(model._name, field_name)
             if field.relational:
@@ -833,16 +836,14 @@ class IrActionsServer(models.Model):
 
         If applicable, link active_id.<self.link_field_id> to the new record.
         """
-        res = {'name': self.value}
-
-        res = self.env[self.crud_model_id.model].create(res)
+        res_id, _res_name = self.env[self.crud_model_id.model].name_create(self.value)
 
         if self.link_field_id:
             record = self.env[self.model_id.model].browse(self._context.get('active_id'))
             if self.link_field_id.ttype in ['one2many', 'many2many']:
-                record.write({self.link_field_id.name: [Command.link(res.id)]})
+                record.write({self.link_field_id.name: [Command.link(res_id)]})
             else:
-                record.write({self.link_field_id.name: res.id})
+                record.write({self.link_field_id.name: res_id})
 
     def _get_eval_context(self, action=None):
         """ Prepare the context used when evaluating python code, like the
@@ -951,6 +952,7 @@ class IrActionsServer(models.Model):
                     # run context dedicated to a particular active_id
                     run_self = action.with_context(active_ids=[active_id], active_id=active_id)
                     eval_context["env"].context = run_self._context
+                    eval_context['records'] = eval_context['record'] = records.browse(active_id)
                     res = runner(run_self, eval_context=eval_context)
             else:
                 _logger.warning(
@@ -964,7 +966,7 @@ class IrActionsServer(models.Model):
     @api.depends('evaluation_type', 'update_field_id')
     def _compute_value_field_to_show(self):  # check if value_field_to_show can be removed and use ttype in xml view instead
         for action in self:
-            if action.update_field_id.ttype in ('many2one', 'many2many'):
+            if action.update_field_id.ttype in ('one2many', 'many2one', 'many2many'):
                 action.value_field_to_show = 'resource_ref'
             elif action.update_field_id.ttype == 'selection':
                 action.value_field_to_show = 'selection_value'
@@ -979,8 +981,7 @@ class IrActionsServer(models.Model):
 
     @api.constrains('update_field_id', 'evaluation_type')
     def _raise_many2many_error(self):
-        if self.filtered(lambda line: line.update_field_id.ttype == 'many2many' and line.evaluation_type == 'reference'):
-            raise ValidationError(_('many2many fields cannot be evaluated by reference'))
+        pass  # TODO: remove in master
 
     @api.onchange('resource_ref')
     def _set_resource_ref(self):
@@ -1000,7 +1001,7 @@ class IrActionsServer(models.Model):
             expr = action.value
             if action.evaluation_type == 'equation':
                 expr = safe_eval(action.value, eval_context)
-            elif action.update_field_id.ttype == 'many2many':
+            elif action.update_field_id.ttype in ['one2many', 'many2many']:
                 operation = action.update_m2m_operation
                 if operation == 'add':
                     expr = [Command.link(int(action.value))]
@@ -1017,8 +1018,17 @@ class IrActionsServer(models.Model):
                     expr = int(action.value)
                 except Exception:
                     pass
+            elif action.update_field_id.ttype == 'float':
+                with contextlib.suppress(Exception):
+                    expr = float(action.value)
             result[action.id] = expr
         return result
+
+    def copy_data(self, default=None):
+        default = default or {}
+        if not default.get('name'):
+            default['name'] = _('%s (copy)', self.name)
+        return super().copy_data(default=default)
 
 class IrActionsTodo(models.Model):
     """
@@ -1131,14 +1141,6 @@ class IrActionsActClient(models.Model):
         for record in self:
             params = record.params
             record.params_store = repr(params) if isinstance(params, dict) else params
-
-    def _get_default_form_view(self):
-        doc = super(IrActionsActClient, self)._get_default_form_view()
-        params = doc.find(".//field[@name='params']")
-        params.getparent().remove(params)
-        params_store = doc.find(".//field[@name='params_store']")
-        params_store.getparent().remove(params_store)
-        return doc
 
 
     def _get_readable_fields(self):

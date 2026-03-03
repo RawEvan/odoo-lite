@@ -5,6 +5,7 @@ view for server-side unit tests.
 """
 import ast
 import collections
+import collections.abc
 import itertools
 import logging
 import time
@@ -542,8 +543,15 @@ class Form:
         self._env.flush_all()
         self._env.clear()  # discard cache and pending recomputations
 
-        if result.get('warning'):
-            _logger.getChild('onchange').warning("%(title)s %(message)s", result['warning'])
+        if w := result.get('warning'):
+            if isinstance(w, collections.abc.Mapping) and w.keys() >= {'title', 'message'}:
+                _logger.getChild('onchange').warning("%(title)s %(message)s", w)
+            else:
+                _logger.getChild('onchange').error(
+                    "received invalid warning %r from onchange on %r (should be a dict with keys `title` and `message`)",
+                    w,
+                    field_names,
+                )
 
         if not field_name:
             # fill in whatever fields are still missing with falsy values
@@ -771,9 +779,13 @@ class O2MValue(X2MValue):
 
 
 class M2MValue(X2MValue):
+    def __init__(self, iterable_of_vals=()):
+        super().__init__(iterable_of_vals)
+        self._given = list(self._data)
+
     def to_commands(self):
-        ids = []
-        result = [Command.set(ids)]
+        given = set(self._given)
+        result = []
         for id_, vals in self._data.items():
             if isinstance(id_, str) and id_.startswith('virtual_'):
                 result.append((Command.CREATE, id_, {
@@ -781,12 +793,16 @@ class M2MValue(X2MValue):
                     for key, val in vals.changed_items()
                 }))
                 continue
-            ids.append(id_)
+            if id_ not in given:
+                result.append(Command.link(id_))
             if vals._changed:
                 result.append(Command.update(id_, {
                     key: val.to_commands() if isinstance(val, X2MValue) else val
                     for key, val in vals.changed_items()
                 }))
+        for id_ in self._given:
+            if id_ not in self._data:
+                result.append(Command.unlink(id_))
         return result
 
 
