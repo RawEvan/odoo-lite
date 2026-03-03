@@ -1,0 +1,11 @@
+export { PageProvider, usePages } from './modules/pageManager/PageContext';
+export { PageContainer } from './modules/pageManager/PageContainer';
+export { PageContent } from './modules/pageManager/PageContent';
+export { ThumbnailNav } from './modules/pageManager/ThumbnailNav';
+export { SidebarMenu } from './modules/pageManager/SidebarMenu';
+export { SettingsPanel } from './modules/pageManager/SettingsPanel';
+export { PreferenceSettings, THEME_COLORS, LAYOUT_MODES } from './modules/pageManager/PreferenceSettings';
+export * from './modules/pageManager/types';
+export { hasModelPage, getModelPageConfig, MODEL_PAGES } from './modules/modelPages';
+export { OdooService } from './services/odoo';
+export { applyThemeColors, initThemeColors, loadPreferences, savePreferences } from './utils/theme';

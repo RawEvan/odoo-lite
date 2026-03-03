@@ -1,0 +1,1 @@
+export { OdooService } from './odoo';

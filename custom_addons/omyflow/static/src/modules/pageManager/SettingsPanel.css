@@ -1,0 +1,124 @@
+.settings-panel__overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.settings-panel {
+  width: 480px;
+  max-width: 90vw;
+  height: 80vh;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+  background: var(--white, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.settings-panel__header {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--primary-color, #714B67);
+  color: var(--white, #fff);
+}
+
+.settings-panel__header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.settings-panel__back,
+.settings-panel__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.5rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.settings-panel__back:hover,
+.settings-panel__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--white, #fff);
+}
+
+.settings-panel__content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.settings-panel__menu {
+  padding: 8px 0;
+}
+
+.settings-panel__menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 16px 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.settings-panel__menu-item:hover {
+  background: var(--primary-light, #f5f0f4);
+}
+
+.settings-panel__menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-right: 16px;
+  font-size: 1.25rem;
+  background: var(--primary-light, #f5f0f4);
+  border-radius: 8px;
+}
+
+.settings-panel__menu-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-panel__menu-label {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-color, #333);
+}
+
+.settings-panel__menu-desc {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  margin-top: 2px;
+}
+
+.settings-panel__menu-arrow {
+  font-size: 1.25rem;
+  color: var(--text-tertiary, #999);
+}

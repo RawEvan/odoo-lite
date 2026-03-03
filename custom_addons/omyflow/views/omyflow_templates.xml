@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="omyflow_index" name="OMyFlow Index">
+        <t t-call="web.layout">
+            <t t-set="html_data">
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+            </t>
+            <t t-set="title">OMyFlow</t>
+            <t t-set="head">
+                <style>
+                    html, body {
+                        margin: 0;
+                        padding: 0;
+                        height: 100%;
+                        overflow: hidden;
+                    }
+                    #omyflow-root {
+                        height: 100%;
+                    }
+                </style>
+            </t>
+            <t t-set="body_classname">omyflow-body</t>
+        </t>
+        <div id="omyflow-root" class="omyflow-container"/>
+        <script src="/omyflow/static/src/main.tsx" type="module"/>
+    </template>
+</odoo>
