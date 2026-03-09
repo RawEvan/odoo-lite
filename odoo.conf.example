@@ -1,0 +1,67 @@
+[options]
+# Odoo Configuration File
+# Copy this file to 'odoo.conf' and modify as needed
+# Usage: python3 odoo-bin -c odoo.conf
+
+# ============================================
+# Admin Settings
+# ============================================
+# Master password for database management
+# Generate with: python3 -c "from passlib.hash import pbkdf2_sha512; print(pbkdf2_sha512.hash('your_password'))"
+admin_passwd = admin
+
+# ============================================
+# Database Settings
+# ============================================
+# PostgreSQL connection settings
+# Set to False to use local socket connection
+db_host = False
+db_port = False
+
+# Database user and password
+# Create user with: createuser -d odoo
+db_user = odoo
+db_password = odoo
+
+# ============================================
+# Server Settings
+# ============================================
+# HTTP port (default: 8069)
+http_port = 8070
+
+# ============================================
+# Addons Path
+# ============================================
+# Comma-separated list of addon directories
+# Include custom_addons for OMyFlow module
+addons_path = addons,odoo/addons,custom_addons
+
+# ============================================
+# Other Settings
+# ============================================
+# Install default productivity apps on database creation
+default_productivity_apps = True
+
+# ============================================
+# Optional Settings (uncomment as needed)
+# ============================================
+# Long polling port (default: 8072)
+# longpolling_port = 8072
+
+# XML-RPC interface (default: 0.0.0.0)
+# xmlrpc_interface = 127.0.0.1
+
+# Proxy mode (set to True if behind reverse proxy)
+# proxy_mode = True
+
+# Database filter (regex pattern)
+# dbfilter = ^mydb$
+
+# Data directory for filestore and sessions
+# data_dir = ~/.local/share/Odoo
+
+# Log level (debug, info, warn, error)
+# log_level = info
+
+# Log file path
+# logfile = /var/log/odoo/odoo.log

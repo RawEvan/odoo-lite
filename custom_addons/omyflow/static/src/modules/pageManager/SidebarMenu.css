@@ -1,0 +1,153 @@
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  height: 100%;
+  background: var(--white, #fff);
+  border-right: 1px solid var(--border-color, #e0e0e0);
+}
+
+.sidebar-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.sidebar-menu__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color, #333);
+}
+
+.sidebar-menu__settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 1.125rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.sidebar-menu__settings-btn:hover {
+  background: var(--primary-light, #f5f0f4);
+}
+
+.sidebar-menu__favorites {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.sidebar-menu__section-title {
+  padding: 8px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-menu__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.sidebar-menu__loading {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary, #666);
+}
+
+.sidebar-menu__item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sidebar-menu__item:hover {
+  background: var(--primary-light, #f5f0f4);
+}
+
+.sidebar-menu__item.--has-children {
+  font-weight: 500;
+}
+
+.sidebar-menu__item.--favorite {
+  padding-left: 16px;
+}
+
+.sidebar-menu__expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  font-size: 0.5rem;
+  transition: transform 0.2s;
+}
+
+.sidebar-menu__expand-icon.--expanded {
+  transform: rotate(90deg);
+}
+
+.sidebar-menu__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  font-size: 0.875rem;
+}
+
+.sidebar-menu__icon.--default {
+  opacity: 0.5;
+}
+
+.sidebar-menu__name {
+  flex: 1;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-menu__favorite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  cursor: pointer;
+  opacity: 0.3;
+  transition: all 0.2s;
+}
+
+.sidebar-menu__favorite:hover {
+  opacity: 0.7;
+}
+
+.sidebar-menu__favorite.--active {
+  opacity: 1;
+  color: #ffc107;
+}
+
+.sidebar-menu__children {
+  overflow: hidden;
+}

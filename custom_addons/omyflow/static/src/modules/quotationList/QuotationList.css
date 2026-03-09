@@ -1,0 +1,119 @@
+.quotation-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.quotation-list__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary, #666);
+}
+
+.quotation-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.quotation-list__header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.quotation-list__count {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
+
+.quotation-list__table-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+
+.quotation-list__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.quotation-list__table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  background: var(--bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  white-space: nowrap;
+}
+
+.quotation-list__table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.quotation-list__row {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.quotation-list__row:hover {
+  background: var(--primary-light, #f5f0f4);
+}
+
+.quotation-list__number {
+  font-weight: 500;
+  color: var(--primary-color, #714B67);
+}
+
+.quotation-list__amount {
+  text-align: right;
+  font-weight: 500;
+}
+
+.quotation-list__state {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--white, #fff);
+  border-radius: 4px;
+}
+
+.quotation-list__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.quotation-list__pagination button {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--white, #fff);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quotation-list__pagination button:hover:not(:disabled) {
+  background: var(--primary-light, #f5f0f4);
+  border-color: var(--primary-color, #714B67);
+}
+
+.quotation-list__pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quotation-list__pagination span {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}
