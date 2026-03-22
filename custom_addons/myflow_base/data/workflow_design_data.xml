@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <record id="workflow_design_self" model="cr.workflow.design">
+            <field name="name">Workflows</field>
+            <field name="key">workflow-design</field>
+            <field name="sequence">1</field>
+            <field name="description">Design and manage workflow layouts for the workflow platform.</field>
+            <field name="layout">{"left":{"width":"260px","components":[{"key":"workflow-list","size":"full"}]},"middle":{"components":[{"key":"workflow-editor","size":"full"}]},"right":{"width":"320px","components":[{"key":"workflow-customization","size":"full"}]}}</field>
+        </record>
+        <record id="workflow_add_workflow" model="cr.workflow.design">
+            <field name="name">Add workflow</field>
+            <field name="key">add-workflow</field>
+            <field name="sequence">2</field>
+            <field name="description">Create a new workflow from available menus and customized components.</field>
+            <field name="layout">{"middle":{"components":[{"key":"workflow-add-builder","size":"full"}]}}</field>
+        </record>
+    </data>
+</odoo>
+
