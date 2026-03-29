@@ -1212,19 +1212,17 @@ def run(gen_func):
     except StopIteration:
         return
 
-def save_test_file(test_name, content, prefix, extension='png', logger=_logger, document_type='Screenshot', date_format="%Y%m%d_%H%M%S_%f"):
+
+def save_test_file(test_name, content, prefix, extension='png', logger=_logger, document_type='Screenshot', date_format="%Y%m%d_%H%M%S_%f", loglevel=logging.RUNBOT, directory=''):
     assert re.fullmatch(r'\w*_', prefix)
     assert re.fullmatch(r'[a-z]+', extension)
     assert re.fullmatch(r'\w+', test_name)
     now = datetime.now().strftime(date_format)
-    screenshots_dir = pathlib.Path(odoo.tools.config['screenshots']) / get_db_name() / 'screenshots'
-    screenshots_dir.mkdir(parents=True, exist_ok=True)
-    fname = f'{prefix}{now}_{test_name}.{extension}'
-    full_path = screenshots_dir / fname
-
-    with full_path.open('wb') as f:
-        f.write(content)
-    logger.runbot(f'{document_type} in: {full_path}')
+    dest = pathlib.Path(odoo.tools.config['screenshots']) / get_db_name() / directory
+    dest.mkdir(parents=True, exist_ok=True)
+    full_path = dest / f'{prefix}{now}_{test_name}.{extension}'
+    full_path.write_bytes(content)
+    logger.log(loglevel, "%s in: %s", document_type, full_path)
 
 
 if os.name == 'posix' and platform.system() != 'Darwin':
@@ -1250,6 +1248,7 @@ class ChromeBrowser:
             self._logger.warning("websocket-client module is not installed")
             raise unittest.SkipTest("websocket-client module is not installed")
         self.user_data_dir = tempfile.mkdtemp(suffix='_chrome_odoo')
+        self.chrome_log_level = logging.RUNBOT
 
         otc = odoo.tools.config
         self.screencasts_dir = None
@@ -1350,8 +1349,10 @@ class ChromeBrowser:
                 self._websocket_request('Browser.close')
             except ChromeBrowserException as e:
                 _logger.runbot("WS error during browser shutdown: %s", e)
+                self.chrome_log_level = logging.RUNBOT
             except Exception:  # noqa: BLE001
                 _logger.warning("Error during browser shutdown", exc_info=True)
+                self.chrome_log_level = logging.RUNBOT
             self._logger.info("Closing websocket connection")
             self.ws.close()
         if self.chrome:
@@ -1362,8 +1363,21 @@ class ChromeBrowser:
             except subprocess.TimeoutExpired:
                 self._logger.warning("Killing chrome headless with pid %s: still alive", self.chrome.pid)
                 self.chrome.kill()
+                self.chrome_log_level = logging.RUNBOT
 
         if self.user_data_dir and os.path.isdir(self.user_data_dir) and self.user_data_dir != '/':
+            log = self.read_log()
+            if log:
+                save_test_file(
+                    self.test_case._testMethodName,
+                    log,
+                    prefix='chrome_log_',
+                    extension='txt',
+                    document_type="Chrome Log",
+                    logger=self._logger,
+                    loglevel=self.chrome_log_level,
+                    directory='chrome_logs',
+                )
             self._logger.info('Removing chrome user profile "%s"', self.user_data_dir)
             shutil.rmtree(self.user_data_dir, ignore_errors=True)
 
@@ -1380,15 +1394,13 @@ class ChromeBrowser:
             raise
 
     def _spawn_chrome(self, cmd):
-        log_path = pathlib.Path(self.user_data_dir, 'err.log')
-        with log_path.open('wb') as log_file:
-            # pylint: disable=subprocess-popen-preexec-fn
-            proc = subprocess.Popen(
-                cmd,
-                stderr=log_file,
-                preexec_fn=_preexec,
-                env={**os.environ, 'TMPDIR': self.user_data_dir},
-            )  # noqa: PLW1509
+        # pylint: disable=subprocess-popen-preexec-fn
+        proc = subprocess.Popen(
+            cmd,
+            stderr=subprocess.DEVNULL,
+            preexec_fn=_preexec,
+            env={**os.environ, 'TMPDIR': self.user_data_dir},
+        )  # noqa: PLW1509
 
         port_file = pathlib.Path(self.user_data_dir, 'DevToolsActivePort')
         for _ in range(CHECK_BROWSER_ITERATIONS):
@@ -1404,7 +1416,10 @@ class ChromeBrowser:
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-        self._logger.warning('Chrome headless failed to start:\n%s', log_path.read_text(encoding="utf-8"))
+        self._logger.warning(
+            'Chrome headless failed to start:\n%s',
+            self.read_log().decode(),
+        )
         # since the chrome never started, it's not going to be `stop`-ed so we
         # need to cleanup the directory here
         shutil.rmtree(self.user_data_dir, ignore_errors=True)
@@ -1445,6 +1460,8 @@ class ChromeBrowser:
             '--remote-debugging-address': HOST,
             '--remote-debugging-port': str(self.remote_debugging_port),
             '--user-data-dir': user_data_dir,
+            '--enable-logging': '',
+            '--v': str(int(os.environ.get("ODOO_BROWSER_LOG_VERBOSITY", "0"))),
             '--no-first-run': '',
             # FIXME: these next 2 flags are temporarily uncommented to allow client
             # code to manually run garbage collection. This is done as currently
@@ -1477,6 +1494,12 @@ class ChromeBrowser:
         self._logger.info('Chrome headless temporary user profile dir: %s', self.user_data_dir)
 
         return proc, devtools_port
+
+    def read_log(self) -> bytes:
+        try:
+            return pathlib.Path(self.user_data_dir, 'chrome_debug.log').read_bytes()
+        except FileNotFoundError:
+            return b''
 
     def _json_command(self, command, timeout=3):
         """Queries browser state using JSON
@@ -1822,7 +1845,7 @@ which leads to stray network requests and inconsistencies."""
                 self._logger.runbot("Couldn't capture screenshot: expected image data, got %r", base_png)
                 return
             decoded = base64.b64decode(base_png, validate=True)
-            save_test_file(type(self.test_case).__name__, decoded, prefix, logger=self._logger)
+            save_test_file(self.test_case._testMethodName, decoded, prefix, logger=self._logger, directory='screenshots')
 
         self._logger.info('Asking for screenshot')
         f = self._websocket_send('Page.captureScreenshot', with_future=True)
@@ -1936,9 +1959,11 @@ which leads to stray network requests and inconsistencies."""
             # if the runcode was a promise which took some time to execute,
             # discount that from the timeout
             if self._result.result(time.time() - start + timeout) and not self.had_failure:
+                self.chrome_log_level = logging.INFO
                 return
         except CancelledError:
             # regular-ish shutdown
+            self.chrome_log_level = logging.INFO
             return
         except Exception as e:
             err = e
