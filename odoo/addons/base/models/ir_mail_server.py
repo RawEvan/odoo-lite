@@ -212,7 +212,7 @@ class IrMailServer(models.Model):
                 server.smtp_authentication_info = _(
                     'Use the SMTP configuration set in the "Command Line Interface" arguments.')
             else:
-                server.smtp_authentication = False
+                server.smtp_authentication_info = False
 
     @api.constrains('smtp_authentication', 'smtp_ssl_certificate', 'smtp_ssl_private_key')
     def _check_smtp_ssl_files(self):
@@ -510,6 +510,7 @@ class IrMailServer(models.Model):
         # need to change the FROM headers or not when we will prepare the mail message
         connection.from_filter = from_filter
         connection.smtp_from = smtp_from
+        connection.mail_server_name = mail_server.display_name if mail_server else smtp_server
 
         return connection
 
@@ -782,7 +783,7 @@ class IrMailServer(models.Model):
         except Exception as e:
             msg = _(
                 "Mail delivery failed via SMTP server '%(server)s'.\n%(exception_name)s: %(message)s",
-                server=smtp_server,
+                server=getattr(smtp, 'mail_server_name', smtp_server),
                 exception_name=e.__class__.__name__,
                 message=e,
             )
