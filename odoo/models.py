@@ -37,7 +37,7 @@ import re
 import uuid
 import warnings
 from collections import defaultdict, deque
-from collections.abc import MutableMapping, Callable
+from collections.abc import Callable, Iterable, MutableMapping
 from contextlib import closing
 from inspect import getmembers
 from operator import attrgetter, itemgetter
@@ -386,7 +386,7 @@ READ_GROUP_DISPLAY_FORMAT = {
     # Mixing both formats, e.g. 'MMM YYYY' would yield wrong results,
     # such as 2006-01-01 being formatted as "January 2005" in some locales.
     # Cfr: http://babel.pocoo.org/en/latest/dates.html#date-fields
-    'hour': 'hh:00 dd MMM',
+    'hour': 'HH:00 dd MMM',
     'day': 'dd MMM yyyy', # yyyy = normal year
     'week': "'W'w YYYY",  # w YYYY = ISO week-year
     'month': 'MMMM yyyy',
@@ -1699,6 +1699,19 @@ class BaseModel(metaclass=MetaModel):
         for fname, value in defaults.items():
             if fname in self._fields:
                 field = self._fields[fname]
+                if (
+                    field.relational
+                    and not self.env.su
+                    and isinstance(value, Iterable)
+                ):
+                    # since the value will be converted into a SET, we still
+                    # need to check permissions for these actions
+                    for cmd in value:
+                        command_code = cmd[0] if isinstance(cmd, (tuple, list)) and len(cmd) >= 2 else None
+                        if command_code == Command.DELETE:
+                            self.env[field.comodel_name].browse(cmd[1]).check_access('unlink')
+                        elif command_code == Command.UPDATE or (field.type == 'one2many' and command_code in (Command.UNLINK, Command.LINK)):
+                            self.env[field.comodel_name].browse(cmd[1]).check_access('write')
                 value = field.convert_to_cache(value, self, validate=False)
                 defaults[fname] = field.convert_to_write(value, self)
 
@@ -3666,7 +3679,7 @@ class BaseModel(metaclass=MetaModel):
                     rows = self.env.execute_query(SQL('SELECT data_type FROM information_schema.columns WHERE table_name = %s AND column_name = %s', cls._table, name))
                     if rows and rows[0][0] == 'jsonb':
                         # patch the field definition by adding an override
-                        _logger.warning("Patching %s.%s with company_dependent=True", cls._name, name)
+                        _logger.debug("Patching %s.%s with company_dependent=True", cls._name, name)
                         fields_.append(type(fields_[0])(company_dependent=True))
             if len(fields_) == 1 and fields_[0]._direct and fields_[0].model_name == cls._name:
                 cls._fields[name] = fields_[0]
@@ -7377,12 +7390,13 @@ class BaseModel(metaclass=MetaModel):
             for dep in self.pool.get_dependent_fields(field.base_field)
         )
 
-    def _apply_onchange_methods(self, field_name, result):
-        """ Apply onchange method(s) for field ``field_name`` on ``self``. Value
-            assignments are applied on ``self``, while warning messages are put
-            in dictionary ``result``.
+    def _apply_onchange_methods(self, field_name, result, excluded_methods=()):
+        """ Apply onchange method(s) (not in ``excluded_methods``) for field ``field_name`` on ``self``.
+            Value assignments are applied on ``self``, while warning messages are put in dictionary ``result``.
         """
         for method in self._onchange_methods.get(field_name, ()):
+            if method in excluded_methods:
+                continue
             res = method(self)
             if not res:
                 continue

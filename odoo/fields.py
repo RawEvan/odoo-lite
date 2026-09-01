@@ -341,9 +341,7 @@ class Field(MetaField('DummyField', (object,), {}), typing.Generic[T]):
         return "%s.%s" % (self.model_name, self.name)
 
     def __repr__(self):
-        if self.name is None:
-            return f"{'<%s.%s>'!r}" % (__name__, type(self).__name__)
-        return f"{'%s.%s'!r}" % (self.model_name, self.name)
+        return repr(str(self))
 
     ############################################################################
     #
@@ -1662,6 +1660,7 @@ class Float(Field[float]):
         return self._min_display_digits
 
     _related__digits = property(attrgetter('_digits'))
+    _related__min_display_digits = property(attrgetter('_min_display_digits'))
 
     def _description_digits(self, env):
         return self.get_digits(env)
@@ -1814,6 +1813,11 @@ class _String(Field[str | typing.Literal[False]]):
 
     _related_translate = property(attrgetter('translate'))
 
+    def _compute_related(self, records):
+        if records.env.context.get('edit_translations'):
+            records = records.with_context(edit_translations=None, check_translations=True)
+        super()._compute_related(records)
+
     def _description_translate(self, env):
         return bool(self.translate)
 
@@ -1871,6 +1875,14 @@ class _String(Field[str | typing.Literal[False]]):
         if value is None:
             return False
         if callable(self.translate) and record.env.context.get('edit_translations'):
+            field_ = self
+            record_ = record
+            while not field_.store and field_.related:
+                record_ = record_.mapped(field_.related.rsplit('.', 1)[0])[:1]
+                field_ = field_.related_field
+            if field_ is not self:
+                return field_.convert_to_record(value, record_)
+
             if not self.get_trans_terms(value):
                 return value
             base_lang = record._get_base_lang()
@@ -1986,7 +1998,7 @@ class _String(Field[str | typing.Literal[False]]):
 
         # not dirty fields
         if not dirty:
-            if self.compute and self.inverse:
+            if self.compute and self.inverse and any(records._ids):
                 # invalidate the values in other languages to force their recomputation
                 values = [{lang: cache_value} for _id in records._ids]
                 cache.update_raw(records, self, values, dirty=False)
