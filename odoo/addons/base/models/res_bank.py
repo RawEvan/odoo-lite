@@ -63,6 +63,7 @@ class ResPartnerBank(models.Model):
     _rec_name = 'acc_number'
     _description = 'Bank Accounts'
     _order = 'sequence, id'
+    _check_company_domain = models.check_company_domain_parent_of
 
     @api.model
     def get_supported_account_types(self):
@@ -103,7 +104,7 @@ class ResPartnerBank(models.Model):
         for bank in self:
             bank.acc_type = self.retrieve_acc_type(bank.acc_number)
 
-    @api.depends('partner_id.name')
+    @api.depends('partner_id')
     def _compute_account_holder_name(self):
         for bank in self:
             bank.acc_holder_name = bank.partner_id.name

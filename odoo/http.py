@@ -2225,7 +2225,7 @@ class Dispatcher(ABC):
         if cors and self.request.httprequest.method == 'OPTIONS':
             set_header('Access-Control-Max-Age', CORS_MAX_AGE)
             set_header('Access-Control-Allow-Headers',
-                       'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+                       'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range')
             werkzeug.exceptions.abort(Response(status=204))
 
         if 'max_content_length' in routing:
@@ -2314,7 +2314,7 @@ class HttpDispatcher(Dispatcher):
             response = self.request.redirect_query('/web/login', {'redirect': self.request.httprequest.full_path})
             if was_connected:
                 root.session_store.rotate(session, self.request.env)
-                response.set_cookie('session_id', session.sid, max_age=get_session_max_inactivity(self.env), httponly=True)
+                response.set_cookie('session_id', session.sid, max_age=get_session_max_inactivity(self.request.env), httponly=True)
             return response
 
         return (exc if isinstance(exc, HTTPException)
@@ -2460,15 +2460,16 @@ class Application:
         """
 
         netloc, path = urlparse(url)[1:3]
+        path = os.path.normpath(os.path.normcase(path))
         try:
-            path_netloc, module, static, resource = path.split('/', 3)
+            path_netloc, module, static, resource = path.split(os.sep, 3)
         except ValueError:
             return None
 
         if ((netloc and netloc != host) or (path_netloc and path_netloc != host)):
             return None
 
-        if (module not in self.statics or static != 'static' or not resource):
+        if (static != 'static' or not resource or module not in self.statics):
             return None
 
         try:
