@@ -10,7 +10,8 @@ from odoo.exceptions import UserError, AccessError, RedirectWarning, ValidationE
 from odoo.service import security
 from odoo.tools.safe_eval import safe_eval, time
 from odoo.tools.misc import find_in_path
-from odoo.tools import check_barcode_encoding, config, is_html_empty, parse_version, split_every
+from odoo.tools.lru import LRU
+from odoo.tools import check_barcode_encoding, config, frozendict, is_html_empty, parse_version, split_every
 from odoo.http import request, root
 from odoo.tools.pdf import PdfFileWriter, PdfFileReader, PdfReadError
 from odoo.osv.expression import NEGATIVE_TERM_OPERATORS, FALSE_DOMAIN
@@ -251,7 +252,7 @@ class IrActionsReport(models.Model):
         attachment_name = safe_eval(self.attachment, {'object': record, 'time': time}) if self.attachment else ''
         if not attachment_name:
             return None
-        return self.env['ir.attachment'].search([
+        return record.env['ir.attachment'].search([
                 ('name', '=', attachment_name),
                 ('res_model', '=', self.model),
                 ('res_id', '=', record.id)
@@ -718,17 +719,19 @@ class IrActionsReport(models.Model):
             barcode_type = 'Code128'
 
         try:
-            barcode = createBarcodeDrawing(barcode_type, value=value, format='png', **kwargs)
-
-            # If a mask is asked and it is available, call its function to
-            # post-process the generated QR-code image
+            mask_to_apply = None
             if kwargs['mask']:
                 available_masks = self.get_available_barcode_masks()
                 mask_to_apply = available_masks.get(kwargs['mask'])
+            frozen_kwargs = frozendict(kwargs)
+            cache = self.env.cr.cache.setdefault('ir_actions_report_barcode', LRU(256))
+            cache_key = (barcode_type, value, frozen_kwargs, mask_to_apply)
+            if cache_key not in cache:
+                barcode = createBarcodeDrawing(barcode_type, value=value, format='png', **frozen_kwargs)
                 if mask_to_apply:
-                    mask_to_apply(kwargs['width'], kwargs['height'], barcode)
-
-            return barcode.asString('png')
+                    mask_to_apply(frozen_kwargs['width'], frozen_kwargs['height'], barcode)
+                cache[cache_key] = barcode.asString('png')
+            return cache[cache_key]
         except (ValueError, AttributeError):
             if barcode_type == 'Code128':
                 raise ValueError("Cannot convert into barcode.")
@@ -776,14 +779,17 @@ class IrActionsReport(models.Model):
         raise UserError(_("Odoo is unable to merge the generated PDFs."))
 
     @api.model
-    def _merge_pdfs(self, streams, handle_error=_handle_merge_pdfs_error):
+    def _merge_pdfs(self, streams, handle_error=None):
         writer = PdfFileWriter()
         for stream in streams:
             try:
                 reader = PdfFileReader(stream)
                 writer.appendPagesFromReader(reader)
             except (PdfReadError, TypeError, NotImplementedError, ValueError) as e:
-                handle_error(error=e, error_stream=stream)
+                if handle_error is None:
+                    self._handle_merge_pdfs_error(error=e, error_stream=stream)
+                else:
+                    handle_error(error=e, error_stream=stream)
         result_stream = io.BytesIO()
         streams.append(result_stream)
         try:
@@ -950,11 +956,11 @@ class IrActionsReport(models.Model):
                         stream = io.BytesIO()
                         attachment_writer.write(stream)
                         collected_streams[res_ids_wo_stream[i]]['stream'] = stream
-                    return collected_streams
                 else:
                     for res_id in res_ids_wo_stream:
                         individual_collected_stream = self._render_qweb_pdf_prepare_streams(report_ref=report_ref, data=data, res_ids=[res_id])
                         collected_streams[res_id]['stream'] = individual_collected_stream[res_id]['stream']
+                return collected_streams
             collected_streams[False] = {'stream': pdf_content_stream, 'attachment': None}
 
         return collected_streams
