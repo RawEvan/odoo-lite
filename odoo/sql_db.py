@@ -73,7 +73,7 @@ def categorize_query(decoded_query):
 
 sql_counter = 0
 
-MAX_IDLE_TIMEOUT = 60 * 10
+MAX_IDLE_TIMEOUT = int(os.getenv("ODOO_DB_MAX_IDLE_TIMEOUT", "600"))
 
 
 class Savepoint:
@@ -875,7 +875,7 @@ def close_db(db_name):
     if _Pool:
         _Pool.close_all(connection_info_for(db_name)[1])
     if _Pool_readonly:
-        _Pool_readonly.close_all(connection_info_for(db_name)[1])
+        _Pool_readonly.close_all(connection_info_for(db_name, readonly=True)[1])
 
 def close_all():
     if _Pool:
