@@ -162,6 +162,15 @@ export class AutoComplete extends Component {
         this.state.activeSourceOption = null;
     }
 
+    discardPendingInput() {
+        this.debouncedProcessInput.cancel();
+        this.pendingPromise?.resolve();
+        if (this.loadingPromise === this.pendingPromise) {
+            this.loadingPromise = null;
+        }
+        this.pendingPromise = null;
+    }
+
     cancel() {
         if (this.inputRef.el.value.length) {
             if (this.props.autoSelect) {
@@ -235,6 +244,7 @@ export class AutoComplete extends Component {
 
     selectOption(option, params = {}) {
         this.inEdition = false;
+        this.discardPendingInput();
         if (option.unselectable) {
             this.inputRef.el.value = "";
             this.close();
@@ -320,6 +330,7 @@ export class AutoComplete extends Component {
     onInputChange(ev) {
         if (this.ignoreBlur) {
             ev.stopImmediatePropagation();
+            return;
         }
         this.props.onChange({
             inputValue: this.inputRef.el.value,
