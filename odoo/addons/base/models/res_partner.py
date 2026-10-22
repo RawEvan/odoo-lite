@@ -772,6 +772,11 @@ class Partner(models.Model):
             vals['website'] = self._clean_website(vals['website'])
         if vals.get('parent_id'):
             vals['company_name'] = False
+        if vals.get('name'):
+            for partner in self:
+                for bank in partner.bank_ids:
+                    if bank.acc_holder_name == partner.name:
+                        bank.acc_holder_name = vals['name']
         if 'company_id' in vals:
             company_id = vals['company_id']
             for partner in self:
@@ -804,7 +809,13 @@ class Partner(models.Model):
                 vals['website'] = self._clean_website(vals['website'])
             if vals.get('parent_id'):
                 vals['company_name'] = False
-        partners = super().create(vals_list)
+        create_self = self
+        if 'default_user_ids' in self.env.context:
+            # default_user_ids targets other models (e.g. task assignees); as
+            # user_ids is the inverse of res.users.partner_id, applying it here
+            # would re-link those users to the new partner
+            create_self = self.with_context({k: v for k, v in self.env.context.items() if k != 'default_user_ids'})
+        partners = super(Partner, create_self).create(vals_list)
 
         if self.env.context.get('_partners_skip_fields_sync'):
             return partners
@@ -1107,8 +1118,10 @@ class Partner(models.Model):
         return [{
             'contact_type': self.street,
             'street': self.street,
+            'street2': self.street2,
             'zip': self.zip,
             'city': self.city,
+            'state': self.state_id.code,
             'country': self.country_id.code,
         }]
 
