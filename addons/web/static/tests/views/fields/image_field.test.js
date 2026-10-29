@@ -8,7 +8,7 @@ import {
     setInputFiles,
     waitFor,
 } from "@odoo/hoot-dom";
-import { animationFrame, runAllTimers, mockDate } from "@odoo/hoot-mock";
+import { animationFrame, mockUserAgent, runAllTimers, mockDate } from "@odoo/hoot-mock";
 import {
     clickSave,
     defineModels,
@@ -227,7 +227,7 @@ test("url should not use the record last updated date when the field is related"
         new File(
             [Uint8Array.from([...atob(MY_IMAGE)].map((c) => c.charCodeAt(0)))],
             "fake_file.png",
-            { type: "png" }
+            { type: "image/png" }
         ),
         "related"
     );
@@ -324,7 +324,7 @@ test("ImageField preview is updated when an image is uploaded", async () => {
     const imageFile = new File(
         [Uint8Array.from([...atob(MY_IMAGE)].map((c) => c.charCodeAt(0)))],
         "fake_file.png",
-        { type: "png" }
+        { type: "image/png" }
     );
     await mountView({
         type: "form",
@@ -348,7 +348,9 @@ test("ImageField preview is updated when an image is uploaded", async () => {
     await click(".o_select_file_button");
     await setInputFiles(imageFile);
     // It can take some time to encode the data as a base64 url
-    await waitFor(`div[name=document] img[data-src="data:image/png;base64,${MY_IMAGE}"]`);
+    await waitFor(`div[name=document] img[data-src="data:image/png;base64,${MY_IMAGE}"]`, {
+        timeout: 1000,
+    });
 });
 
 test("clicking save manually after uploading new image should change the unique of the image src", async () => {
@@ -385,7 +387,7 @@ test("clicking save manually after uploading new image should change the unique 
         new File(
             [Uint8Array.from([...atob(MY_IMAGE)].map((c) => c.charCodeAt(0)))],
             "fake_file.png",
-            { type: "png" }
+            { type: "image/png" }
         )
     );
     expect("div[name=document] img").toHaveAttribute(
@@ -410,7 +412,7 @@ test("clicking save manually after uploading new image should change the unique 
         new File(
             [Uint8Array.from([...atob(PRODUCT_IMAGE)].map((c) => c.charCodeAt(0)))],
             "fake_file2.gif",
-            { type: "gif" }
+            { type: "image/gif" }
         )
     );
     expect("div[name=document] img").toHaveAttribute(
@@ -477,6 +479,42 @@ test("ImageField: option accepted_file_extensions", async () => {
     // The view must be in edit mode
     expect("input.o_input_file").toHaveAttribute("accept", ".png,.jpeg", {
         message: "the input should have the correct ``accept`` attribute",
+    });
+});
+
+test("ImageField: no camera hint mimetype in the mobile app", async () => {
+    // the app builds its own file chooser out of the accept attribute
+    mockUserAgent("OdooMobile (Linux; Android 1000)");
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 1,
+        arch: /* xml */ `
+            <form>
+                <field name="document" widget="image" options="{'accepted_file_extensions': '.png'}" />
+            </form>
+        `,
+    });
+    expect("input.o_input_file").toHaveAttribute("accept", ".png", {
+        message: "the input should only have the accepted file extensions of the field",
+    });
+});
+
+test("ImageField: camera hint mimetype on Chromium for Android", async () => {
+    // a mimetype which is not an image is needed to get the camera back, see the ImageField
+    mockUserAgent("android");
+    await mountView({
+        type: "form",
+        resModel: "partner",
+        resId: 1,
+        arch: /* xml */ `
+            <form>
+                <field name="document" widget="image" />
+            </form>
+        `,
+    });
+    expect("input.o_input_file").toHaveAttribute("accept", "image/*,dummy/allowAndroidCamera", {
+        message: "the input should have the camera hint mimetype on top of the accepted extensions",
     });
 });
 
@@ -703,7 +741,7 @@ test("ImageField is reset when changing record", async () => {
         `,
     });
 
-    const imageFile = new File([imageData], "fake_file.png", { type: "png" });
+    const imageFile = new File([imageData], "fake_file.png", { type: "image/png" });
     expect("img[alt='Binary file']").toHaveAttribute(
         "data-src",
         "/web/static/img/placeholder.png",
@@ -862,7 +900,7 @@ test("convert image to webp", async () => {
         `,
     });
 
-    const imageFile = new File([imageData], "fake_file.jpeg", { type: "jpeg" });
+    const imageFile = new File([imageData], "fake_file.jpeg", { type: "image/jpeg" });
     expect("img[alt='Binary file']").toHaveAttribute(
         "data-src",
         "/web/static/img/placeholder.png",

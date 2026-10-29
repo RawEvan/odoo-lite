@@ -6,6 +6,7 @@ from ast import literal_eval
 
 from odoo import api, models, _
 from odoo.exceptions import AccessError, RedirectWarning, UserError
+from odoo.tools import str2bool
 
 _logger = logging.getLogger(__name__)
 
@@ -265,6 +266,7 @@ class ResConfigSettings(models.TransientModel, ResConfigModuleInstallationMixin)
         if not fields:
             return res
 
+        self.check_access('read')
         IrDefault = self.env['ir.default']
         IrConfigParameter = self.env['ir.config_parameter'].sudo()
         classified = self._get_classified_fields(fields)
@@ -312,7 +314,7 @@ class ResConfigSettings(models.TransientModel, ResConfigModuleInstallationMixin)
                         _logger.warning(WARNING_MESSAGE, value, field, icp)
                         value = 0.0
                 elif field.type == 'boolean':
-                    value = bool(value)
+                    value = str2bool(value, bool(value))
             res[name] = value
 
         res.update(self.get_values())
@@ -363,7 +365,7 @@ class ResConfigSettings(models.TransientModel, ResConfigModuleInstallationMixin)
                 # bugs when users leave spaces around them
                 value = (value or "").strip() or False
             elif field.type in ('integer', 'float'):
-                value = repr(value) if value else False
+                value = repr(value)
             elif field.type == 'many2one':
                 # value is a (possibly empty) recordset
                 value = value.id
