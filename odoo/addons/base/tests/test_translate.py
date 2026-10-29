@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 from hashlib import sha256
 from unittest.mock import patch
+import ast
 import logging
 import time
 
@@ -11,7 +12,7 @@ import io
 
 from odoo.exceptions import UserError
 from odoo.tools import sql
-from odoo.tools.translate import _push, quote, unquote, xml_translate, html_translate, TranslationImporter, TranslationModuleReader, TranslationReader
+from odoo.tools.translate import _push, get_text_alias, quote, unquote, xml_translate, html_translate, TranslationImporter, TranslationModuleReader, TranslationReader
 from odoo.tests.common import TransactionCase, BaseCase, new_test_user, tagged
 
 _stats_logger = logging.getLogger('odoo.tests.stats')
@@ -414,6 +415,15 @@ class TranslationToolsTestCase(BaseCase):
         terms = []
         _push(lambda term, line: terms.append(term), 'g', 1)
         self.assertEqual(terms, ['g'])
+
+    def test_gettext_local_user_not_a_user(self):
+        """A local variable named 'user' that is no user must not break _()."""
+        def get_label():
+            user = 'Mitchell Admin'  # noqa: F841
+            return get_text_alias("Settings")  # what _() calls
+
+        with self.assertLogs('odoo.tools.translate', 'WARNING'):
+            self.assertEqual(get_label(), "Settings")
 
 
 class TestLanguageInstall(TransactionCase):
@@ -1700,6 +1710,19 @@ class TestXMLTranslation(TransactionCase):
         self.assertEqual(view1_us.arch_db, xml % ('Soccer', 'Clbus', 'Ranking'))  # "Rakning" should be fixed in en_US
         self.assertEqual(view1_gb.arch_db, xml % ('Football', 'Clubs', 'Rakning'))  # "Rakning" isn't fixed in en_GB
         self.assertEqual(view1_us.arch_db, xml % ('Soccer', 'Clbus', 'Ranking'))  # fr_FR should fall back to en_US
+
+    def test_delay_translations_backend_edition(self):
+        archf = '<form string="%s"><div>%s</div><div>%s</div></form>'
+        terms_fr = ('Couteau', 'Fourchette', 'Cuiller')
+        terms_en = ('Knife', 'Fork', 'Spoon')
+        view0 = self.create_view(archf, terms_fr, en_US=terms_en)
+        original_english = view0.arch_db
+        new_french = '<form>bonjour monde</form>'
+        view0.with_context(lang='fr_FR', delay_translations=True).arch_db = new_french
+        self.assertEqual(view0.arch_db, original_english)
+        self.assertEqual(view0.with_context(check_translations=True).arch_db, new_french)
+        context = ast.literal_eval(self.env.ref('base.action_ui_view').context)
+        self.assertTrue(context.get('check_translations'))
 
 
 class TestXMLDuplicateTranslations(TransactionCase):
