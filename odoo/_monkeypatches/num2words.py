@@ -971,14 +971,43 @@ class NumberToWords_BG(Num2Word_Base):
         return ret_minus + ''.join(ret)
 
 
+SPANISH_APOCOPE_RE = re.compile(r'\b(veinti)?uno(?=\s+(?:mil|\w+ll(?:ón|ones))\b)')
+
+
+def _spanish_apocope_classes():
+    from num2words.lang_ES import Num2Word_ES  # noqa: PLC0415
+    from num2words.lang_ES_CO import Num2Word_ES_CO  # noqa: PLC0415
+    from num2words.lang_ES_VE import Num2Word_ES_VE  # noqa: PLC0415
+
+    class Num2Word_ES_Fixed(Num2Word_ES):
+        def to_cardinal(self, value):
+            result = super().to_cardinal(value)
+            return SPANISH_APOCOPE_RE.sub(lambda m: "veintiún" if m.group(1) else "un", result)
+
+    class Num2Word_ES_CO_Fixed(Num2Word_ES_Fixed, Num2Word_ES_CO):
+        pass
+
+    class Num2Word_ES_VE_Fixed(Num2Word_ES_Fixed, Num2Word_ES_VE):
+        pass
+
+    return Num2Word_ES_Fixed, Num2Word_ES_CO_Fixed, Num2Word_ES_VE_Fixed
+
+
 def patch_num2words():
     try:
         import num2words  # noqa: PLC0415
     except ImportError:
-        _logger = logging.getLogger(__name__)
-        _logger.warning("num2words is not available, Arabic number to words conversion will not work")
         return
     if MIN_PY_VERSION >= (3, 12):
-        raise RuntimeError("The num2words monkey patch is obsolete. Bump the version of the library to the latest available in the official package repository, if it hasn't already been done, and remove the patch.")
+        raise RuntimeError("The num2words monkey patch for Arabic is obsolete. Bump the version of the library to the latest available in the official package repository, if it hasn't already been done, and remove the patch.")
+    if MIN_PY_VERSION >= (3, 13):
+        raise RuntimeError("The num2words monkey patch for Czech is obsolete. Bump the version of the library to the latest available in the official package repository, if it hasn't already been done, and remove the patch.")
     num2words.CONVERTER_CLASSES["ar"] = Num2Word_AR_Fixed()
     num2words.CONVERTER_CLASSES["bg"] = NumberToWords_BG()
+    if 'cz' in num2words.CONVERTER_CLASSES and not 'cs' in num2words.CONVERTER_CLASSES:
+        # There is a mistake in the Czech language code in versions < 0.5.14. Map it to the correct code here.
+        num2words.CONVERTER_CLASSES['cs'] = num2words.CONVERTER_CLASSES['cz']
+    es_fixed, es_co_fixed, es_ve_fixed = _spanish_apocope_classes()
+    num2words.CONVERTER_CLASSES["es"] = es_fixed()
+    num2words.CONVERTER_CLASSES["es_CO"] = es_co_fixed()
+    num2words.CONVERTER_CLASSES["es_VE"] = es_ve_fixed()

@@ -26,6 +26,12 @@ function useClickAway(callback) {
         callback(event.composedPath()[0]);
     };
 
+    const clickAwayHandler = (event) => {
+        if (event.detail === 0) {
+            callback(event.composedPath()[0]);
+        }
+    };
+
     const blurHandler = (ev) => {
         const target = ev.relatedTarget || document.activeElement;
         if (target?.tagName === "IFRAME") {
@@ -35,6 +41,7 @@ function useClickAway(callback) {
 
     useEarlyExternalListener(window, "pointerdown", pointerDownHandler, { capture: true });
     useEarlyExternalListener(window, "blur", blurHandler, { capture: true });
+    useEarlyExternalListener(window, "click", clickAwayHandler, { capture: true });
 }
 
 const POPOVERS = new WeakMap();

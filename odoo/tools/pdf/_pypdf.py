@@ -16,6 +16,8 @@ __all__ = [
 
 
 pypdf.PageObject.mergePage = lambda self, page2: self.merge_page(page2)
+pypdf.PageObject.compressContentStreams = lambda self: self.compress_content_streams()
+pypdf.PageObject.rotateClockwise = lambda self, angle: self.rotate(angle)
 pypdf.PageObject.mediaBox = property(lambda self: self.mediabox)
 # use lambdas (rather than copying) to allow overrides of the base method
 generic.PdfObject.getObject = lambda self: self.get_object()
@@ -80,5 +82,12 @@ class PdfWriter(_Writer):
     def getFields(self, *args, **kwargs):
         return self.get_fields(*args, **kwargs)
 
-    def _addObject(self, *args, **kwargs):
-        return self._add_object(*args, **kwargs)
+    def _addObject(self, obj):
+        # PyPDF2 remaps the references of another PDF's object on write, pypdf needs it cloned
+        try:
+            ref = obj.indirect_reference
+        except AttributeError:
+            ref = None
+        if ref is not None and ref.pdf is not self:
+            return obj.clone(self).indirect_reference
+        return self._add_object(obj)
