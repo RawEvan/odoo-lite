@@ -2565,7 +2565,7 @@ class BaseModel(metaclass=MetaModel):
         adding the domain corresponding to its values, the groupbys in the
         context and by properly formatting the date/datetime values.
         """
-        for group in lazy_groupby:
+        for group in unique(lazy_groupby):
             field_name = group.split(':')[0].split('.')[0]
             field = self._fields[field_name]
 
@@ -6102,7 +6102,7 @@ class BaseModel(metaclass=MetaModel):
 
             # set inverse fields on new records in the comodel
             if field.relational:
-                inv_recs = self[field.name].filtered(lambda r: not r.id)
+                inv_recs = field.convert_to_record(value, self).filtered(lambda r: not r.id)
                 if not inv_recs:
                     continue
                 # we need to adapt the value of the inverse fields to integrate self into it:
