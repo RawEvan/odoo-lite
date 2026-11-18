@@ -188,7 +188,9 @@ class FloatConverter(models.AbstractModel):
             precision = self.env['decimal.precision'].precision_get(options['decimal_precision'])
         elif options.get('precision') is None:
             int_digits = int(math.log10(abs(value))) + 1 if value != 0 else 1
-            max_dec_digits = max(15 - int_digits, 0)
+            # Within 15 digits, we have a float with no parasite digits.
+            # 14 is chosen here, as float_round will add a digit when performing its computations.
+            max_dec_digits = max(14 - int_digits, 0)
             # We display maximum 6 decimal digits or the number of significant decimal digits if it's lower
             precision = min(6, max_dec_digits)
             min_precision = min_precision or 1
@@ -448,7 +450,7 @@ class ImageUrlConverter(models.AbstractModel):
 
     @api.model
     def value_to_html(self, value, options):
-        return Markup('<img src="%s">' % (value))
+        return Markup('<img src="%s">') % (value)
 
 class MonetaryConverter(models.AbstractModel):
     """ ``monetary`` converter, has a mandatory option
@@ -481,7 +483,7 @@ class MonetaryConverter(models.AbstractModel):
 
     @api.model
     def value_to_html(self, value, options):
-        display_currency = options['display_currency']
+        display_currency = options.get('display_currency') or self.env.company.currency_id
 
         if not isinstance(value, (int, float)):
             raise ValueError(_("The value send to monetary field is not a number."))
@@ -535,8 +537,16 @@ class MonetaryConverter(models.AbstractModel):
             # search on the model if they are a res.currency field to set as default
             fields = record._fields.items()
             currency_fields = [k for k, v in fields if v.type == 'many2one' and v.comodel_name == 'res.currency']
-            if currency_fields:
+            if currency_fields and record[currency_fields[0]]:
                 options['display_currency'] = record[currency_fields[0]]
+            else:
+                company = (
+                    options.get('company_id')
+                    or ('company_id' in record._fields and record.company_id)
+                    or record.env.company
+                )
+                options['display_currency'] = company.currency_id
+
         if 'date' not in options:
             options['date'] = record._context.get('date')
         if 'company_id' not in options:

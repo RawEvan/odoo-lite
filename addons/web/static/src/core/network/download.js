@@ -316,21 +316,17 @@ function _download(data, filename, mimetype) {
 
     if (url && url.length < 2048) {
         // if no filename and no mime, assume a url was passed as the only argument
-        fileName = url.split("/").pop().split("?")[0];
         anchor.href = url; // assign href prop to temp anchor
-        if (anchor.href.indexOf(url) !== -1) {
-            // if the browser determines that it's a potentially valid url path:
-            return new Promise((resolve, reject) => {
-                let xhr = new browser.XMLHttpRequest();
-                xhr.open("GET", url, true);
-                configureBlobDownloadXHR(xhr, {
-                    onSuccess: resolve,
-                    onFailure: reject,
-                    url
-                });
-                xhr.send();
+        return new Promise((resolve, reject) => {
+            let xhr = new browser.XMLHttpRequest();
+            xhr.open("GET", url, true);
+            configureBlobDownloadXHR(xhr, {
+                onSuccess: resolve,
+                onFailure: reject,
+                url
             });
-        }
+            xhr.send();
+        });
     }
 
     //go ahead and download dataURLs right away
@@ -451,6 +447,9 @@ function _download(data, filename, mimetype) {
 /**
  * Download data as a file
  *
+ * When `data` is a url and no filename nor mimetype is given, the file is
+ * requested from that url with GET.
+ *
  * @param {Object} data
  * @param {String} filename
  * @param {String} mimetype
@@ -469,6 +468,8 @@ downloadFile._download = _download;
  *
  * This function is meant to call a controller with some data
  * and download the response.
+ *
+ * The request is sent with POST, or with the method of the given form.
  *
  * Note: the actual implementation is certainly unconventional, but sadly
  * necessary to be able to test code using the download function

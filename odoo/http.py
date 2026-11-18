@@ -1322,6 +1322,70 @@ def make_request_wrap_methods(attr):
     return getter, setter
 
 
+class Authorization(Proxy):
+    _wrapped__ = werkzeug.datastructures.Authorization
+
+    if hasattr(_wrapped__, 'to_header'):
+        to_header = ProxyFunc(str)
+    password = ProxyAttr(str)
+    token = ProxyAttr(str)
+    type = ProxyAttr(str)
+    username = ProxyAttr(str)
+    algorithm = ProxyAttr(str)
+    cnonce = ProxyAttr(str)
+    nc = ProxyAttr(str)
+    nonce = ProxyAttr(str)
+    opaque = ProxyAttr(str)
+    qop = ProxyAttr(str)
+    realm = ProxyAttr(str)
+    response = ProxyAttr(str)
+    uri = ProxyAttr(str)
+    userhash = ProxyAttr(str)
+
+    __contains__ = ProxyFunc(bool)
+    __getitem__ = ProxyFunc()
+    get = ProxyFunc()
+
+    @property
+    def parameters(self):
+        authorization = self._wrapped__
+        parameters = (
+            authorization
+            if isinstance(authorization, dict)
+            else authorization.parameters
+        )
+        return dict(parameters)
+
+    def __bool__(self):
+        return bool(self._wrapped__)
+
+    def __eq__(self, other):
+        if isinstance(other, Authorization):
+            other = other._wrapped__
+        return self._wrapped__ == other
+
+    def __hash__(self):
+        return hash(self._wrapped__)
+
+    def __iter__(self):
+        return iter(self.parameters)
+
+    def __len__(self):
+        return len(self.parameters)
+
+    def copy(self):
+        return self.parameters
+
+    def items(self):
+        return self.parameters.items()
+
+    def keys(self):
+        return self.parameters.keys()
+
+    def values(self):
+        return self.parameters.values()
+
+
 class HTTPRequest:
     def __init__(self, environ):
         httprequest = werkzeug.wrappers.Request(environ)
@@ -1342,10 +1406,23 @@ class HTTPRequest:
     def __enter__(self):
         return self
 
+    @property
+    def authorization(self):
+        authorization = self.__wrapped.authorization
+        if authorization is None:
+            return None
+        return Authorization(authorization)
+
+    @authorization.setter
+    def authorization(self, value):
+        if isinstance(value, Authorization):
+            value = value._wrapped__
+        self.__wrapped.authorization = value
+
 
 HTTPREQUEST_ATTRIBUTES = [
     '__str__', '__repr__', '__exit__',
-    'accept_charsets', 'accept_languages', 'accept_mimetypes', 'access_route', 'args', 'authorization', 'base_url',
+    'accept_charsets', 'accept_languages', 'accept_mimetypes', 'access_route', 'args', 'base_url',
     'charset', 'content_encoding', 'content_length', 'content_md5', 'content_type', 'cookies', 'data', 'date',
     'encoding_errors', 'files', 'form', 'full_path', 'get_data', 'get_json', 'headers', 'host', 'host_url', 'if_match',
     'if_modified_since', 'if_none_match', 'if_range', 'if_unmodified_since', 'is_json', 'is_secure', 'json',
@@ -2225,7 +2302,7 @@ class Dispatcher(ABC):
         if cors and self.request.httprequest.method == 'OPTIONS':
             set_header('Access-Control-Max-Age', CORS_MAX_AGE)
             set_header('Access-Control-Allow-Headers',
-                       'Origin, X-Requested-With, Content-Type, Accept, Authorization')
+                       'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range')
             werkzeug.exceptions.abort(Response(status=204))
 
         if 'max_content_length' in routing:
@@ -2314,7 +2391,7 @@ class HttpDispatcher(Dispatcher):
             response = self.request.redirect_query('/web/login', {'redirect': self.request.httprequest.full_path})
             if was_connected:
                 root.session_store.rotate(session, self.request.env)
-                response.set_cookie('session_id', session.sid, max_age=get_session_max_inactivity(self.env), httponly=True)
+                response.set_cookie('session_id', session.sid, max_age=get_session_max_inactivity(self.request.env), httponly=True)
             return response
 
         return (exc if isinstance(exc, HTTPException)
@@ -2460,15 +2537,16 @@ class Application:
         """
 
         netloc, path = urlparse(url)[1:3]
+        path = os.path.normpath(os.path.normcase(path))
         try:
-            path_netloc, module, static, resource = path.split('/', 3)
+            path_netloc, module, static, resource = path.split(os.sep, 3)
         except ValueError:
             return None
 
         if ((netloc and netloc != host) or (path_netloc and path_netloc != host)):
             return None
 
-        if (module not in self.statics or static != 'static' or not resource):
+        if (static != 'static' or not resource or module not in self.statics):
             return None
 
         try:

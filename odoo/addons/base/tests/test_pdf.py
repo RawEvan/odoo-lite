@@ -67,6 +67,39 @@ class TestPdf(TransactionCase):
 
         self.assertEqual(len(attachments), 2)
 
+    def test_odoo_pdf_file_reader_with_nested_attachments(self):
+        with file_open('base/tests/multi_kids_embedded.pdf', 'rb') as file:
+            pdf_reader = pdf.OdooPdfFileReader(file, strict=False)
+            attachments = list(pdf_reader.getAttachments())
+        self.assertEqual(len(attachments), 2)
+
+    def test_odoo_pdf_file_reader_object_is_indirect_reference(self):
+        # macOS Preview can write `/Info 5 0 R` in the catalog, with `5 0 obj 4 0 R endobj`
+        objects = {
+            1: b"<< /Type /Catalog /Pages 2 0 R /Info 5 0 R >>",
+            2: b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            3: b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>",
+            4: b"<< /Producer (macOS Quartz PDFContext, AppendMode 1.1) >>",
+            5: b"4 0 R",
+        }
+        data = bytearray(b"%PDF-1.4\n")
+        offsets = {}
+        for number, body in objects.items():
+            offsets[number] = len(data)
+            data += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+        xref = len(data)
+        data += b"xref\n0 6\n0000000000 65535 f \n"
+        data += b"".join(b"%010d 00000 n \n" % offsets[n] for n in range(1, 6))
+        data += b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % xref
+
+        reader = pdf.OdooPdfFileReader(io.BytesIO(bytes(data)), strict=False)
+        pdf_writer = pdf.PdfFileWriter()
+        pdf_writer.cloneReaderDocumentRoot(reader)
+        self.assertEqual(pdf_writer._root_object['/Info']['/Producer'], 'macOS Quartz PDFContext, AppendMode 1.1')
+        out = io.BytesIO()
+        pdf_writer.write(out)
+        self.assertEqual(pdf.OdooPdfFileReader(out, strict=False).getNumPages(), 1)
+
     def test_merge_pdf(self):
         self.assertEqual(self.minimal_pdf_reader.getNumPages(), 1)
         page = self.minimal_pdf_reader.getPage(0)
@@ -120,3 +153,26 @@ class TestPdf(TransactionCase):
 
         for i, expected_shape in enumerate(expected_shapes):
             self.assertEqual(processed_text[i], expected_shape)
+
+    def test_reshaping_arabic_text_with_numbers(self):
+        """
+        Test that numbers inside Arabic text keep their left-to-right digit order.
+        """
+        # ASCII numbers
+        processed_text = reshape_text("الأتعاب 1000 درهم و 1,250.50 درهم")
+        self.assertEqual(processed_text, "ﻢﻫﺭﺩ 1,250.50 ﻭ ﻢﻫﺭﺩ 1000 ﺏﺎﻌﺗﻵﺍ")
+
+        # Arabic numbers and separators
+        processed_text = reshape_text("المبلغ ١٬٢٥٠٫٥٠ ريال و ١٢،٥ ريال")
+        self.assertEqual(processed_text, "ﻝﺎﻳﺭ ١٢،٥ ﻭ ﻝﺎﻳﺭ ١٬٢٥٠٫٥٠ ﻎﻠﺒﻤﻟﺍ")
+
+        # No-break space
+        processed_text = reshape_text("المبلغ 1\u00A0000 درهم")
+        self.assertEqual(processed_text, "ﻢﻫﺭﺩ 1\u00A0000 ﻎﻠﺒﻤﻟﺍ")
+
+    def test_reshaping_arabic_text_with_brackets(self):
+        """
+        Test that brackets inside Arabic text are in the right order.
+        """
+        processed_text = reshape_text("الأتعاب (1000) درهم (نقدا)")
+        self.assertEqual(processed_text, "(ﺍﺪﻘﻧ) ﻢﻫﺭﺩ (1000) ﺏﺎﻌﺗﻵﺍ")

@@ -84,7 +84,8 @@ class TestQwebFieldFloatConverter(common.TransactionCase):
         self.assertEqual(self.value_to_html(3.123, options), '3.123')
         self.assertEqual(self.value_to_html(3.1239, options), '3.1239')
         self.assertEqual(self.value_to_html(3.1231239, options), '3.123124')
-        self.assertEqual(self.value_to_html(1234567890.1234567890, options), '1,234,567,890.12346')
+        self.assertEqual(self.value_to_html(528000000.0, options), '528,000,000.000')
+        self.assertEqual(self.value_to_html(1234567890.1234567890, options), '1,234,567,890.1235')
 
     def test_float_value_to_html_with_precision_and_min_precision(self):
         options = {'min_precision': 3, 'precision': 4}
@@ -173,3 +174,19 @@ class TestQwebFieldMany2One(common.TransactionCase):
         parent = self.env['res.partner'].create({'name': 'BigBoss'})
         child = self.env['res.partner'].create({'name': 'Minion', 'parent_id': parent.id})
         self.assertEqual(self.value_to_html(child.parent_id), 'BigBoss')
+
+    def test_monetary_field_render_without_currency_fields(self):
+        converter = self.env['ir.qweb.field.monetary']
+        company_currency = self.env.company.currency_id
+
+        html_default = converter.value_to_html(123.45, {})
+        self.assertIn('123.45', html_default)
+        self.assertIn(company_currency.symbol, html_default)
+
+        html_false = converter.value_to_html(99.95, {'display_currency': False})
+        self.assertIn('99.95', html_false)
+        self.assertIn(company_currency.symbol, html_false)
+
+        html_empty_rec = converter.value_to_html(123.45, {'display_currency': self.env['res.currency']})
+        self.assertIn('123.45', html_empty_rec)
+        self.assertIn(company_currency.symbol, html_empty_rec)

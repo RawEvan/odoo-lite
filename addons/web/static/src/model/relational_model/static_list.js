@@ -145,7 +145,11 @@ export class StaticList extends DataPoint {
 
     delete(record) {
         return this.model.mutex.exec(async () => {
-            await this._applyCommands([[x2ManyCommands.DELETE, record.resId || record._virtualId]]);
+            const recordId = record.resId || record._virtualId;
+            if (!this._currentIds.includes(recordId)) {
+                return;
+            }
+            await this._applyCommands([[x2ManyCommands.DELETE, recordId]]);
             await this._onUpdate();
         });
     }
@@ -555,7 +559,11 @@ export class StaticList extends DataPoint {
                         if (linkToIndex >= 0) {
                             ownCommands.splice(linkToIndex, 1);
                         } else {
-                            addOwnCommand([UNLINK, command[1]]);
+                            const hasCreateCommand = ownCommands.some((x) => x.command[0] === CREATE);
+                            ownCommands.splice(0); // reset to the empty list
+                            if (!hasCreateCommand) {
+                                addOwnCommand([UNLINK, command[1]]);
+                            }
                         }
                     }
                     removedIds[command[1]] = true;

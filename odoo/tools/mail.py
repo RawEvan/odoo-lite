@@ -69,6 +69,9 @@ safe_attrs = defs.safe_attrs | frozenset(
      'data-mimetype-before-conversion',
      'data-bs-toggle',  # support nav-tabs
      ])
+
+defs.link_attrs |= {'xlink:href'}
+
 SANITIZE_TAGS = {
     # allow new semantic HTML5 tags
     'allow_tags': defs.tags | frozenset('article bdi section header footer hgroup nav aside figure main'.split() + [etree.Comment]),
@@ -85,7 +88,7 @@ class _Cleaner(clean.Cleaner):
     _style_whitelist = [
         'font-size', 'font-family', 'font-weight', 'font-style', 'background-color', 'color', 'text-align',
         'line-height', 'letter-spacing', 'text-transform', 'text-decoration', 'text-decoration', 'opacity',
-        'float', 'vertical-align', 'display', 'object-fit',
+        'float', 'vertical-align', 'display', 'object-fit', 'direction',
         'padding', 'padding-top', 'padding-left', 'padding-bottom', 'padding-right',
         'margin', 'margin-top', 'margin-left', 'margin-bottom', 'margin-right',
         'white-space',
@@ -284,6 +287,8 @@ def html_normalize(src, filter_callback=None, output_method="html"):
 
     # html: remove encoding attribute inside tags
     src = re.sub(r'(<[^>]*\s)(encoding=(["\'][^"\']*?["\']|[^\s\n\r>]+)(\s[^>]*|/)?>)', "", src, flags=re.IGNORECASE | re.DOTALL)
+    # html: remove charset declarations from meta tags, the source is already decoded
+    src = re.sub(r'(<meta\b[^>]*?)\bcharset\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'>;]+)', r'\1', src, flags=re.IGNORECASE)
 
     src = src.replace('--!>', '-->')
     src = re.sub(r'(<!-->|<!--->)', '<!-- -->', src)
